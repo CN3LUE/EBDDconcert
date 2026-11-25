@@ -159,7 +159,7 @@ export function SettingsModal({
                   ? isAdminMode
                     ? t.settingsAdminActiveDesc
                     : t.settingsAdminOffDesc
-                  : 'hyoleen@penz.kr'}
+                  : '정비중'}
               </p>
             </div>
 
