@@ -1708,7 +1708,7 @@ export function App() {
         id: 'minhyuk',
         name: '🥁 강민혁',
         roleLabel: 'DRUM · 드러머',
-        quote: '🥁 강민혁: 심장 터지는 드럼 비트로 끝까지 함께 달려요!!',
+        quote: '🥁 강민혁: 오늘 체조 뚜껑 날릴 기세로 드럼 칠게요!',
       });
       memberMinhyuk.position.set(-4.3, 1.45, -11.4);
       arenaWorldGroup.add(memberMinhyuk);
@@ -1716,7 +1716,7 @@ export function App() {
       const memberYonghwa = buildBandMemberMesh(THREE, {
         id: 'yonghwa',
         name: '🎸 정용화',
-        roleLabel: '에블바디뛰엌!!!!!!',
+        roleLabel: 'VOCAL&GUITAR',
         quote: '🎸 정용화: 에블바디뛰엌!!!!!! 보이스 소리 질러!!',
       });
       memberYonghwa.position.set(0, 1.38, 3.0);
@@ -1726,7 +1726,7 @@ export function App() {
         id: 'jungshin',
         name: '🎸 이정신',
         roleLabel: 'BASS · 에바뛰 함께 달려!',
-        quote: '🎸 이정신: 묵직한 베이스 그루브로 체조경기장 흔들어볼게요 💙',
+        quote: '🎸 이정신: 최선을 다해 뛰어!!! 켁💙',
       });
       memberJungshin.position.set(4.3, 1.45, -10.5);
       arenaWorldGroup.add(memberJungshin);
