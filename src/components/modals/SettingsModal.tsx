@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   Globe,
+  LogOut,
   Moon,
   Settings,
+  ShieldCheck,
   Shirt,
   Sun,
   Sunset,
@@ -14,6 +16,11 @@ import type { SkyTheme, UserProfileState } from '../../types/plaza';
 export function SettingsModal({
   myProfile,
   skyTheme,
+  isAdminAuthorized = false,
+  isAdminMode = false,
+  onToggleAdminMode,
+  onAdminSignIn,
+  onSignOut,
   onChangeSkyTheme,
   onChangeLang,
   onOpenProfile,
@@ -21,6 +28,11 @@ export function SettingsModal({
 }: {
   myProfile: UserProfileState;
   skyTheme: SkyTheme;
+  isAdminAuthorized?: boolean;
+  isAdminMode?: boolean;
+  onToggleAdminMode?: () => void;
+  onAdminSignIn?: () => void;
+  onSignOut?: () => void;
   onChangeSkyTheme: (theme: SkyTheme) => void;
   onChangeLang: (nextLang: AppLang) => void;
   onOpenProfile: () => void;
@@ -133,6 +145,58 @@ export function SettingsModal({
                 <span>{t.skyNight}</span>
               </button>
             </div>
+          </div>
+
+          {/* 4. 관리자 모드 */}
+          <div className="p-3.5 rounded-2xl bg-slate-950/75 border border-amber-400/25 flex items-center justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="text-xs font-extrabold text-amber-300 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>{t.settingsAdminLabel}</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 leading-snug [word-break:keep-all]">
+                {isAdminAuthorized
+                  ? isAdminMode
+                    ? t.settingsAdminActiveDesc
+                    : t.settingsAdminOffDesc
+                  : 'hyoleen@penz.kr'}
+              </p>
+            </div>
+
+            {isAdminAuthorized ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={onToggleAdminMode}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-extrabold whitespace-nowrap transition active:scale-95 ${
+                    isAdminMode
+                      ? 'bg-amber-400 border-amber-200 text-slate-950 shadow'
+                      : 'bg-slate-800 border-white/15 text-slate-200 hover:bg-slate-700'
+                  }`}
+                >
+                  {isAdminMode ? t.settingsAdminToggleOn : t.settingsAdminToggleOff}
+                </button>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    title="로그아웃"
+                    aria-label="로그아웃"
+                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-slate-300 transition"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onAdminSignIn}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-xs font-extrabold text-amber-200 shrink-0 whitespace-nowrap transition active:scale-95"
+              >
+                {t.settingsAdminSignInBtn}
+              </button>
+            )}
           </div>
         </div>
       </div>

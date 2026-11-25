@@ -973,6 +973,17 @@ export function buildBandMemberMesh(
       rightArmPivot.add(yonghwaStick.stickPivot);
       rightArmPivot.rotation.x = -2.25;
       rightArmPivot.rotation.z = -0.18;
+    } else if (member.id === 'jungshin') {
+      const fanPivot = new THREE.Group();
+      fanPivot.position.set(0, -0.44, 0.16);
+      fanPivot.rotation.x = 2.35;
+      fanPivot.rotation.y = -0.18;
+      const jungshinFan = buildEbddFanMesh(THREE);
+      jungshinFan.scale.setScalar(1.05);
+      fanPivot.add(jungshinFan);
+      rightArmPivot.add(fanPivot);
+      rightArmPivot.rotation.x = -2.15;
+      rightArmPivot.rotation.z = -0.16;
     } else {
       rightArmPivot.rotation.x = -0.95;
       rightArmPivot.rotation.z = 0.32;
@@ -1008,6 +1019,7 @@ export function buildBandMemberMesh(
     memberName: member.name,
     memberRoleLabel: member.roleLabel,
     hasLightstick: member.id === 'yonghwa',
+    hasFan: member.id === 'jungshin',
   };
   return root;
 }

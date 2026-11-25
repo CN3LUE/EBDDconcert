@@ -26,6 +26,7 @@ export function ProfileModal({
   onSignOutGoogle,
   onOpenAdvent,
   onShowToast,
+  isAdminMode = false,
   onClose,
 }: {
   threeReady: boolean;
@@ -39,9 +40,11 @@ export function ProfileModal({
   onSignOutGoogle?: () => void;
   onOpenAdvent: () => void;
   onShowToast: (msg: string) => void;
+  isAdminMode?: boolean;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
+  const effectiveUnlockCount = isAdminMode ? 999 : answeredCount;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md">
@@ -83,7 +86,9 @@ export function ProfileModal({
                   <span>{t.profileBannerTitle(answeredCount)}</span>
                 </div>
                 <p className="text-[11px] text-blue-100/85 mt-0.5">
-                  {nextUnlockMilestone
+                  {isAdminMode
+                    ? t.profileAdminBanner
+                    : nextUnlockMilestone
                     ? t.profileBannerNext(nextUnlockMilestone.day, nextUnlockMilestone.label)
                     : t.profileBannerAllDone}
                 </p>
@@ -149,7 +154,7 @@ export function ProfileModal({
               <div className="grid grid-cols-3 gap-2">
                 {CAP_OPTIONS.map((cap) => {
                   const reqDay = CAP_UNLOCK_DAY[cap.id];
-                  const isUnlocked = answeredCount >= reqDay;
+                  const isUnlocked = effectiveUnlockCount >= reqDay;
                   const capName = t.profileCapOptions[cap.id] ?? cap.name;
                   return (
                     <button
@@ -200,7 +205,7 @@ export function ProfileModal({
               <div className="grid grid-cols-2 gap-2">
                 {OUTFIT_OPTIONS.map((outfit) => {
                   const reqDay = OUTFIT_UNLOCK_DAY[outfit.id];
-                  const isUnlocked = answeredCount >= reqDay;
+                  const isUnlocked = effectiveUnlockCount >= reqDay;
                   const oTr = t.profileOutfitOptions[outfit.id] ?? outfit;
                   return (
                     <button
@@ -265,7 +270,7 @@ export function ProfileModal({
                 <button
                   type="button"
                   onClick={() => {
-                    if (answeredCount < HAND_ITEM_UNLOCK_DAY.lightstick) {
+                    if (effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.lightstick) {
                       onShowToast(t.profileLightstickLockToast);
                       return;
                     }
@@ -276,7 +281,7 @@ export function ProfileModal({
                     }));
                   }}
                   className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition ${
-                    answeredCount < HAND_ITEM_UNLOCK_DAY.lightstick
+                    effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.lightstick
                       ? 'bg-slate-950 border-white/5 text-slate-500 opacity-75'
                       : myProfile.leftHandItem === 'none' &&
                         myProfile.rightHandItem === 'lightstick'
@@ -284,14 +289,14 @@ export function ProfileModal({
                       : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  {answeredCount < HAND_ITEM_UNLOCK_DAY.lightstick
+                  {effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.lightstick
                     ? t.profileLightstickOnlyLocked
                     : t.profileLightstickOnly}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    if (answeredCount < HAND_ITEM_UNLOCK_DAY.fan) {
+                    if (effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan) {
                       onShowToast(t.profileFanLockToast);
                       return;
                     }
@@ -302,21 +307,21 @@ export function ProfileModal({
                     }));
                   }}
                   className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition ${
-                    answeredCount < HAND_ITEM_UNLOCK_DAY.fan
+                    effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan
                       ? 'bg-slate-950 border-white/5 text-slate-500 opacity-75'
                       : myProfile.leftHandItem === 'none' && myProfile.rightHandItem === 'fan'
                       ? 'bg-blue-600 border-sky-300 text-white'
                       : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  {answeredCount < HAND_ITEM_UNLOCK_DAY.fan
+                  {effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan
                     ? t.profileFanOnlyLocked
                     : t.profileFanOnly}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    if (answeredCount < HAND_ITEM_UNLOCK_DAY.slogan) {
+                    if (effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.slogan) {
                       onShowToast(t.profileSloganLockToast);
                       return;
                     }
@@ -327,7 +332,7 @@ export function ProfileModal({
                     }));
                   }}
                   className={`py-2 px-2 rounded-xl border text-[11px] font-extrabold transition ${
-                    answeredCount < HAND_ITEM_UNLOCK_DAY.slogan
+                    effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.slogan
                       ? 'bg-slate-950 border-white/5 text-slate-500 opacity-75'
                       : myProfile.leftHandItem === 'slogan' ||
                         myProfile.rightHandItem === 'slogan'
@@ -335,14 +340,14 @@ export function ProfileModal({
                       : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  {answeredCount < HAND_ITEM_UNLOCK_DAY.slogan
+                  {effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.slogan
                     ? t.profileSloganBothLocked
                     : t.profileSloganBoth}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    if (answeredCount < HAND_ITEM_UNLOCK_DAY.fan) {
+                    if (effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan) {
                       onShowToast(t.profileFanLockToast);
                       return;
                     }
@@ -353,7 +358,7 @@ export function ProfileModal({
                     }));
                   }}
                   className={`py-2 px-2 rounded-xl border text-[11px] font-extrabold transition ${
-                    answeredCount < HAND_ITEM_UNLOCK_DAY.fan
+                    effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan
                       ? 'bg-slate-950 border-white/5 text-slate-500 opacity-75'
                       : myProfile.leftHandItem !== 'none' &&
                         myProfile.rightHandItem !== 'none' &&
@@ -363,7 +368,7 @@ export function ProfileModal({
                       : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  {answeredCount < HAND_ITEM_UNLOCK_DAY.fan
+                  {effectiveUnlockCount < HAND_ITEM_UNLOCK_DAY.fan
                     ? lang === 'en'
                       ? '🔒 #2 Full Set'
                       : lang === 'zh'
@@ -400,7 +405,7 @@ export function ProfileModal({
                       ] as const
                     ).map((opt) => {
                       const reqDay = HAND_ITEM_UNLOCK_DAY[opt.id];
-                      const isUnlocked = answeredCount >= reqDay;
+                      const isUnlocked = effectiveUnlockCount >= reqDay;
                       return (
                         <button
                           type="button"
@@ -448,7 +453,7 @@ export function ProfileModal({
                       ] as const
                     ).map((opt) => {
                       const reqDay = HAND_ITEM_UNLOCK_DAY[opt.id];
-                      const isUnlocked = answeredCount >= reqDay;
+                      const isUnlocked = effectiveUnlockCount >= reqDay;
                       return (
                         <button
                           type="button"
@@ -493,7 +498,7 @@ export function ProfileModal({
               </label>
               <div className="flex flex-wrap gap-2">
                 {LIGHTSTICK_PALETTE.map((c) => {
-                  const isUnlocked = answeredCount >= c.unlockDay;
+                  const isUnlocked = effectiveUnlockCount >= c.unlockDay;
                   const cName = t.profileColorNames[c.hex] ?? c.name;
                   return (
                     <button

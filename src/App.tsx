@@ -107,6 +107,8 @@ declare global {
   }
 }
 
+const ADMIN_EMAIL = 'hyoleen@penz.kr';
+
 export function App() {
   // --- 클라우드 인증 & 동기화 상태 ---
   const [user, setUser] = useState<User | null>(null);
@@ -114,6 +116,17 @@ export function App() {
   const [authFallbackNeeded, setAuthFallbackNeeded] = useState<boolean>(false);
   const [publicAdventAnswers, setPublicAdventAnswers] = useState<PublicAdventAnswer[]>([]);
   const lastSavedSnapshotRef = useRef<string>('');
+  const [adminModeEnabled, setAdminModeEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('kspo_plaza_admin_mode') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const isAdminAuthorized = Boolean(
+    user && !user.isAnonymous && user.email?.toLowerCase() === ADMIN_EMAIL
+  );
+  const isAdminMode = isAdminAuthorized && adminModeEnabled;
 
   // --- 3D & 환경 상태 ---
   const [threeReady, setThreeReady] = useState<boolean>(false);
@@ -154,6 +167,55 @@ export function App() {
       setToastMsg('');
     }, 3200);
   }, []);
+
+  const handleToggleAdminMode = useCallback(() => {
+    setAdminModeEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('kspo_plaza_admin_mode', next ? 'true' : 'false');
+      } catch {
+        // ignore storage access issues
+      }
+      showToast(
+        next
+          ? '👑 관리자 모드가 켜졌습니다! 모든 질문과 아이템이 열렸습니다.'
+          : '👤 일반 팬 모드로 전환되었습니다.'
+      );
+      return next;
+    });
+  }, [showToast]);
+
+  const handleGoogleSignIn = useCallback(
+    (fromAdminPrompt = false) => {
+      signInWithGoogle()
+        .then((signedInUser) => {
+          const email = signedInUser?.email?.toLowerCase() || '';
+          if (email === ADMIN_EMAIL) {
+            setAdminModeEnabled(true);
+            try {
+              localStorage.setItem('kspo_plaza_admin_mode', 'true');
+            } catch {
+              // ignore storage access issues
+            }
+            showToast('👑 관리자 계정 인증 완료! 모든 질문과 아이템을 볼 수 있습니다.');
+          } else if (fromAdminPrompt) {
+            showToast('⚠️ 관리자 계정(hyoleen@penz.kr)으로 로그인해야 관리자 모드가 열립니다.');
+          } else {
+            showToast('☁️ Google 계정으로 클라우드 동기화가 연결되었습니다!');
+          }
+        })
+        .catch((err) => {
+          console.error('Google sign-in error:', err);
+          const code = (err as { code?: string })?.code || '';
+          if (code === 'auth/unauthorized-domain') {
+            showToast('현재 도메인이 Firebase 승인 도메인에 등록되지 않았습니다.');
+          } else {
+            showToast('로그인 창이 닫혔거나 팝업이 차단되었습니다.');
+          }
+        });
+    },
+    [showToast]
+  );
 
   const defaultProfileRef = useRef<UserProfileState>({
     name: `보이스_${Math.floor(100 + Math.random() * 899)}`,
@@ -1708,7 +1770,7 @@ export function App() {
         id: 'minhyuk',
         name: '🥁 강민혁',
         roleLabel: 'DRUM · 드러머',
-        quote: '🥁 강민혁: 오늘 체조 뚜껑 날릴 기세로 드럼 칠게요!',
+        quote: '🥁 강민혁: 천장 뚫을 기세로 드럼 칠게요!',
       });
       memberMinhyuk.position.set(-4.3, 1.45, -11.4);
       arenaWorldGroup.add(memberMinhyuk);
@@ -1716,7 +1778,7 @@ export function App() {
       const memberYonghwa = buildBandMemberMesh(THREE, {
         id: 'yonghwa',
         name: '🎸 정용화',
-        roleLabel: 'VOCAL&GUITAR',
+        roleLabel: '에블바디뛰엌!!!!!!',
         quote: '🎸 정용화: 에블바디뛰엌!!!!!! 보이스 소리 질러!!',
       });
       memberYonghwa.position.set(0, 1.38, 3.0);
@@ -1726,7 +1788,7 @@ export function App() {
         id: 'jungshin',
         name: '🎸 이정신',
         roleLabel: 'BASS · 에바뛰 함께 달려!',
-        quote: '🎸 이정신: 최선을 다해 뛰어!!! 켁💙',
+        quote: '🎸 이정신: 최선을 다해 뛰어!!! 켁',
       });
       memberJungshin.position.set(4.3, 1.45, -10.5);
       arenaWorldGroup.add(memberJungshin);
@@ -2880,9 +2942,9 @@ export function App() {
             ud.leftLeg.rotation.x = Math.sin(runCycle) * legAmp;
             ud.rightLeg.rotation.x = -Math.sin(runCycle) * legAmp;
           }
-          if (ud.hasLightstick) {
-            ud.rightArmPivot.rotation.x = -2.25 + Math.sin(runCycle * 0.65) * 0.28;
-            ud.rightArmPivot.rotation.z = -0.18 + Math.cos(runCycle * 0.65) * 0.1;
+          if (ud.hasLightstick || ud.hasFan) {
+            ud.rightArmPivot.rotation.x = -2.2 + Math.sin(runCycle * 0.65) * 0.3;
+            ud.rightArmPivot.rotation.z = -0.18 + Math.cos(runCycle * 0.65) * 0.12;
           } else {
             ud.rightArmPivot.rotation.x = -0.95 + Math.sin(runCycle) * (isRunning ? 0.3 : 0.16);
           }
@@ -3284,6 +3346,16 @@ export function App() {
   };
 
   const handleCheckInAdvent = (dateStr: string) => {
+    if (!isAdminMode && dateStr > todayKstStr) {
+      const lockedObj = ADVENT_DAILY_LIST.find((d) => d.dateStr === dateStr);
+      if (lockedObj) {
+        showToast(
+          t.adventLockedToast(lockedObj.year, lockedObj.month, lockedObj.day, lockedObj.dDay)
+        );
+      }
+      return;
+    }
+
     const answerText = adventAnswerInput.trim();
     const hadPreviousAnswer = Boolean(adventAnswers[dateStr]?.trim());
 
@@ -3840,6 +3912,7 @@ export function App() {
           nextUnlockMilestone={nextUnlockMilestone}
           onCheckInAdvent={handleCheckInAdvent}
           onShowToast={showToast}
+          isAdminMode={isAdminMode}
           onClose={() => setActiveModal('none')}
         />
       )}
@@ -3897,14 +3970,7 @@ export function App() {
           nextUnlockMilestone={nextUnlockMilestone}
           firebaseUser={user}
           authFallbackNeeded={authFallbackNeeded}
-          onSignInGoogle={() => {
-            signInWithGoogle()
-              .then(() => showToast('☁️ Google 계정으로 클라우드 동기화가 연결되었습니다!'))
-              .catch((err) => {
-                console.error('Google sign-in error:', err);
-                showToast('로그인 창이 닫혔거나 팝업이 차단되었습니다.');
-              });
-          }}
+          onSignInGoogle={() => handleGoogleSignIn(false)}
           onSignOutGoogle={() => {
             signOutFirebase()
               .then(() => showToast('로그아웃되었습니다.'))
@@ -3912,6 +3978,7 @@ export function App() {
           }}
           onOpenAdvent={() => setActiveModal('advent')}
           onShowToast={showToast}
+          isAdminMode={isAdminMode}
           onClose={() => setActiveModal('none')}
         />
       )}
@@ -3953,11 +4020,20 @@ export function App() {
         />
       )}
 
-      {/* 모달 7: 환경설정 (프로필/MD · 언어 · 하늘) */}
+      {/* 모달 7: 환경설정 (프로필/MD · 언어 · 하늘 · 관리자 모드) */}
       {activeModal === 'settings' && (
         <SettingsModal
           myProfile={myProfile}
           skyTheme={skyTheme}
+          isAdminAuthorized={isAdminAuthorized}
+          isAdminMode={isAdminMode}
+          onToggleAdminMode={handleToggleAdminMode}
+          onAdminSignIn={() => handleGoogleSignIn(true)}
+          onSignOut={() => {
+            signOutFirebase()
+              .then(() => showToast('로그아웃되었습니다.'))
+              .catch((err) => console.error('Sign out error:', err));
+          }}
           onChangeSkyTheme={setSkyTheme}
           onChangeLang={handleChangeLang}
           onOpenProfile={() => setActiveModal('profile')}

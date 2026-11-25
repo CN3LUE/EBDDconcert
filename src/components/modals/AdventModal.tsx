@@ -42,6 +42,7 @@ export function AdventModal({
   nextUnlockMilestone,
   onCheckInAdvent,
   onShowToast,
+  isAdminMode = false,
   onClose,
 }: {
   todayKstStr: string;
@@ -65,6 +66,7 @@ export function AdventModal({
   nextUnlockMilestone: { day: number; label: string; shortName: string; icon: string } | null;
   onCheckInAdvent: (dateStr: string) => void;
   onShowToast: (msg: string) => void;
+  isAdminMode?: boolean;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
@@ -107,6 +109,7 @@ export function AdventModal({
     };
 
     for (const entry of publicAdventAnswers) {
+      if (!isAdminMode && entry.dateStr > todayKstStr) continue;
       const grp = ensureBucket(entry.dateStr);
       if (!grp.seenTexts.has(entry.text)) {
         grp.seenTexts.add(entry.text);
@@ -114,8 +117,10 @@ export function AdventModal({
       }
     }
 
-    const unlockedDays = ADVENT_DAILY_LIST.filter((item) => item.dateStr <= todayKstStr).reverse();
-    const starterPool = unlockedDays.length > 0 ? unlockedDays.slice(0, 3) : [ADVENT_DAILY_LIST[0]];
+    const unlockedDays = isAdminMode
+      ? [...ADVENT_DAILY_LIST].reverse()
+      : ADVENT_DAILY_LIST.filter((item) => item.dateStr <= todayKstStr).reverse();
+    const starterPool = unlockedDays.slice(0, 3);
     for (const dayObj of starterPool) {
       const grp = ensureBucket(dayObj.dateStr);
       dayObj.sampleAnswers.forEach((sampleTxt, idx) => {
@@ -132,7 +137,7 @@ export function AdventModal({
 
     const count = groups.reduce((acc, g) => acc + g.answers.length, 0);
     return { groupedPeerDays: groups, totalSharedCount: count };
-  }, [publicAdventAnswers, currentAdventObj, todayKstStr]);
+  }, [publicAdventAnswers, currentAdventObj, todayKstStr, isAdminMode]);
 
   const visiblePeerGroups = useMemo(() => {
     if (peerFilterMode === 'selected') {
@@ -156,6 +161,11 @@ export function AdventModal({
             <h2 className="text-sm sm:text-lg font-extrabold text-white flex items-center gap-1.5 sm:gap-2 break-keep">
               <Flag className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 shrink-0" />
               <span className="truncate sm:whitespace-normal">{t.adventTitle}</span>
+              {isAdminMode && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/60 text-[10px] font-black text-amber-200 shrink-0 whitespace-nowrap">
+                  {t.adminModeBadge}
+                </span>
+              )}
             </h2>
             <p className="text-[11px] sm:text-xs text-blue-200/80 mt-0.5 break-keep leading-snug">
               {t.adventSubtitle}
@@ -309,7 +319,7 @@ export function AdventModal({
                             const isDay1 = item.dateStr === '2027-02-20';
                             const isDay2 = item.dateStr === ADVENT_END_DATE;
                             const isConcertDay = isDay1 || isDay2;
-                            const isFuture = item.dateStr > todayKstStr;
+                            const isFuture = !isAdminMode && item.dateStr > todayKstStr;
 
                             return (
                               <button
@@ -431,69 +441,92 @@ export function AdventModal({
                       )}
                     </div>
 
-                    <div className="px-3 py-2 rounded-xl bg-blue-950/60 border border-blue-400/25 flex items-center justify-between gap-2 text-xs">
-                      <span className="text-blue-200 font-bold shrink-0">
-                        {checkedDates.includes(currentAdventObj.dateStr)
-                          ? nextUnlockMilestone
-                            ? t.adventDoneCountNext(answeredCount, nextUnlockMilestone.day)
-                            : t.adventAllMdDone
-                          : nextUnlockMilestone
-                          ? t.adventNextItemLabel(nextUnlockMilestone.day)
-                          : t.adventTodayReward}
-                      </span>
-                      <span className="text-amber-300 font-extrabold text-right">
-                        {nextUnlockMilestone
-                          ? nextUnlockMilestone.label
-                          : currentAdventObj.rewardLabel}
-                      </span>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2">
-                      <div className="text-[11px] font-extrabold text-sky-400">
-                        {t.adventTodayQuestion}
-                      </div>
-                      <p className="text-xs sm:text-sm font-bold text-white leading-relaxed">
-                        Q. {localizedQuestion}
-                      </p>
-                      {adventAnswers[currentAdventObj.dateStr] && (
-                        <div className="mt-2 p-2.5 rounded-lg bg-blue-600/20 border border-sky-400/30 text-xs text-sky-100">
-                          <span className="font-bold text-sky-300">{t.adventMyRecordPrefix}</span>
-                          {adventAnswers[currentAdventObj.dateStr]}
+                    {!isAdminMode && currentAdventObj.dateStr > todayKstStr ? (
+                      <div className="p-5 rounded-2xl bg-slate-900/90 border border-amber-400/30 text-center space-y-2.5 my-auto">
+                        <div className="w-11 h-11 rounded-2xl bg-amber-400/15 border border-amber-300/40 flex items-center justify-center mx-auto">
+                          <Lock className="w-5 h-5 text-amber-300" />
                         </div>
-                      )}
-                    </div>
+                        <div className="text-sm font-extrabold text-amber-200 [word-break:keep-all]">
+                          {t.adventLockedCardTitle(currentAdventObj.month, currentAdventObj.day)}
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed [word-break:keep-all]">
+                          {t.adventLockedCardDesc(
+                            currentAdventObj.year,
+                            currentAdventObj.month,
+                            currentAdventObj.day,
+                            currentAdventObj.dDay
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="px-3 py-2 rounded-xl bg-blue-950/60 border border-blue-400/25 flex items-center justify-between gap-2 text-xs">
+                          <span className="text-blue-200 font-bold shrink-0">
+                            {checkedDates.includes(currentAdventObj.dateStr)
+                              ? nextUnlockMilestone
+                                ? t.adventDoneCountNext(answeredCount, nextUnlockMilestone.day)
+                                : t.adventAllMdDone
+                              : nextUnlockMilestone
+                              ? t.adventNextItemLabel(nextUnlockMilestone.day)
+                              : t.adventTodayReward}
+                          </span>
+                          <span className="text-amber-300 font-extrabold text-right">
+                            {nextUnlockMilestone
+                              ? nextUnlockMilestone.label
+                              : currentAdventObj.rewardLabel}
+                          </span>
+                        </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1.5">
-                        {t.adventAnswerLabel}
-                      </label>
-                      <textarea
-                        rows={3}
-                        maxLength={120}
-                        value={adventAnswerInput}
-                        onChange={(e) => onChangeAdventAnswerInput(e.target.value)}
-                        placeholder={t.adventAnswerPlaceholder}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/15 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-400 resize-none"
-                      />
-                    </div>
+                        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2">
+                          <div className="text-[11px] font-extrabold text-sky-400">
+                            {t.adventTodayQuestion}
+                          </div>
+                          <p className="text-xs sm:text-sm font-bold text-white leading-relaxed">
+                            Q. {localizedQuestion}
+                          </p>
+                          {adventAnswers[currentAdventObj.dateStr] && (
+                            <div className="mt-2 p-2.5 rounded-lg bg-blue-600/20 border border-sky-400/30 text-xs text-sky-100">
+                              <span className="font-bold text-sky-300">{t.adventMyRecordPrefix}</span>
+                              {adventAnswers[currentAdventObj.dateStr]}
+                            </div>
+                          )}
+                        </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onChangeAdventTab('peers')}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-blue-950/80 border border-sky-400/25 text-[11px] font-bold text-sky-200 flex items-center justify-center gap-1.5 transition"
-                    >
-                      <span>{t.adventPeersViewAllBtn(totalSharedCount)}</span>
-                    </button>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-300 mb-1.5">
+                            {t.adventAnswerLabel}
+                          </label>
+                          <textarea
+                            rows={3}
+                            maxLength={120}
+                            value={adventAnswerInput}
+                            onChange={(e) => onChangeAdventAnswerInput(e.target.value)}
+                            placeholder={t.adventAnswerPlaceholder}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/15 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-400 resize-none"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onChangeAdventTab('peers')}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-blue-950/80 border border-sky-400/25 text-[11px] font-bold text-sky-200 flex items-center justify-center gap-1.5 transition"
+                        >
+                          <span>{t.adventPeersViewAllBtn(totalSharedCount)}</span>
+                        </button>
+                      </>
+                    )}
                   </div>
 
-                  <button
-                    onClick={() => onCheckInAdvent(currentAdventObj.dateStr)}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-xs font-extrabold text-white shadow-lg transition active:scale-95"
-                  >
-                    {checkedDates.includes(currentAdventObj.dateStr)
-                      ? t.adventUpdateAnswerBtn
-                      : t.adventCompleteAnswerBtn}
-                  </button>
+                  {(isAdminMode || currentAdventObj.dateStr <= todayKstStr) && (
+                    <button
+                      onClick={() => onCheckInAdvent(currentAdventObj.dateStr)}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-xs font-extrabold text-white shadow-lg transition active:scale-95"
+                    >
+                      {checkedDates.includes(currentAdventObj.dateStr)
+                        ? t.adventUpdateAnswerBtn
+                        : t.adventCompleteAnswerBtn}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

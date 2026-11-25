@@ -139,6 +139,16 @@ export interface TranslationDict {
   adventUpdateAnswerBtn: string;
   adventCompleteAnswerBtn: string;
   adventEmptyDiary: string;
+  adventLockedCardTitle: (m: number, d: number) => string;
+  adventLockedCardDesc: (y: number, m: number, d: number, dDay: number) => string;
+  adminModeBadge: string;
+  settingsAdminLabel: string;
+  settingsAdminSignInBtn: string;
+  settingsAdminActiveDesc: string;
+  settingsAdminOffDesc: string;
+  settingsAdminToggleOn: string;
+  settingsAdminToggleOff: string;
+  profileAdminBanner: string;
   // Profile
   profileTitle: string;
   profileSubtitle: string;
@@ -324,6 +334,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventUpdateAnswerBtn: '💙 오늘의 답변 업데이트',
     adventCompleteAnswerBtn: '✅ 답변 완료 & 아이템 받기',
     adventEmptyDiary: '아직 출석 기록이 없습니다. 달력에서 오늘 날짜에 첫 출석 도장을 찍어보세요! 💙',
+    adventLockedCardTitle: (m, d) => `🔒 ${m}월 ${d}일 자정에 오픈됩니다`,
+    adventLockedCardDesc: (y, m, d, dDay) =>
+      `${y}년 ${m}월 ${d}일 (D-${dDay}) 00:00 KST가 되면 오늘의 질문과 아이템 보상이 열립니다! 조금만 기다려 주세요 💙`,
+    adminModeBadge: '👑 관리자 모드',
+    settingsAdminLabel: '관리자 모드 (Admin)',
+    settingsAdminSignInBtn: 'Google 관리자 로그인',
+    settingsAdminActiveDesc: '모든 어드벤트 질문(88일) & 착용 MD 아이템이 열려 있습니다.',
+    settingsAdminOffDesc: '일반 팬 화면으로 미리보기 중입니다.',
+    settingsAdminToggleOn: '관리자 ON',
+    settingsAdminToggleOff: '일반 모드',
+    profileAdminBanner: '👑 관리자 모드 활성 · 모든 MD 아이템을 자유롭게 착용해 볼 수 있어요!',
     profileTitle: '내 아바타 & MD 꾸미기',
     profileSubtitle: '헤어스타일 · 캡 · 트랙 자켓 · 뛰봉 · 에.바.뛰. 부채 · 양손 슬로건',
     profileBannerTitle: (count) => `일일 질문 참여 · ${count}회 완료`,
@@ -528,6 +549,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventUpdateAnswerBtn: '💙 Update Today’s Answer',
     adventCompleteAnswerBtn: '✅ Submit & Claim Item',
     adventEmptyDiary: 'No check-ins yet. Stamp today’s date on the track! 💙',
+    adventLockedCardTitle: (m, d) => `🔒 Opens on ${m}/${d} at midnight (KST)`,
+    adventLockedCardDesc: (y, m, d, dDay) =>
+      `This day's question and reward will unlock on ${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')} (D-${dDay}) at 00:00 KST. Stay tuned! 💙`,
+    adminModeBadge: '👑 Admin Mode',
+    settingsAdminLabel: 'Admin Mode',
+    settingsAdminSignInBtn: 'Admin Google Sign-In',
+    settingsAdminActiveDesc: 'All 88 Advent questions & MD items are unlocked.',
+    settingsAdminOffDesc: 'Previewing as a regular fan.',
+    settingsAdminToggleOn: 'Admin ON',
+    settingsAdminToggleOff: 'Fan View',
+    profileAdminBanner: '👑 Admin Mode Active · All MD items are unlocked for preview!',
     profileTitle: 'My Avatar & MD',
     profileSubtitle: 'Hairstyle · Cap · Track Jacket · Ttuibong · Fan · Slogan',
     profileBannerTitle: (count) => `Daily Q&A · ${count} Completed`,
@@ -729,6 +761,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventUpdateAnswerBtn: '💙 更新今日回答',
     adventCompleteAnswerBtn: '✅ 提交回答 & 领取道具',
     adventEmptyDiary: '暂无打卡记录，快去日历点击今天的日期盖下第一个印章吧！💙',
+    adventLockedCardTitle: (m, d) => `🔒 将于 ${m}月${d}日 零点解锁`,
+    adventLockedCardDesc: (y, m, d, dDay) =>
+      `${y}年${m}月${d}日 (D-${dDay}) 00:00 KST 将开放今日提问与道具奖励，敬请期待！💙`,
+    adminModeBadge: '👑 管理员模式',
+    settingsAdminLabel: '管理员模式 (Admin)',
+    settingsAdminSignInBtn: 'Google 管理员登录',
+    settingsAdminActiveDesc: '已解锁全部 88 天提问与所有周边装扮道具。',
+    settingsAdminOffDesc: '当前正在预览普通粉丝视图。',
+    settingsAdminToggleOn: '管理员 ON',
+    settingsAdminToggleOff: '普通视图',
+    profileAdminBanner: '👑 管理员模式已开启 · 可自由试穿全部周边道具！',
     profileTitle: '我的角色 & 周边装扮',
     profileSubtitle: '发型 · 帽子 · 运动夹克 · 跳棒 · 应援扇 · 双手手幅',
     profileBannerTitle: (count) => `每日提问参与 · 已完成 ${count}次`,
@@ -931,6 +974,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventUpdateAnswerBtn: '💙 今日の回答を更新',
     adventCompleteAnswerBtn: '✅ 回答完了 & アイテムを受け取る',
     adventEmptyDiary: 'まだ出席記録がありません。カレンダーから今日の日付に最初のスタンプを押しましょう！💙',
+    adventLockedCardTitle: (m, d) => `🔒 ${m}月${d}日 0時にオープンします`,
+    adventLockedCardDesc: (y, m, d, dDay) =>
+      `${y}年${m}月${d}日 (D-${dDay}) 00:00 KST に質問と報酬が解放されます。もうしばらくお待ちください！💙`,
+    adminModeBadge: '👑 管理者モード',
+    settingsAdminLabel: '管理者モード (Admin)',
+    settingsAdminSignInBtn: 'Google 管理者ログイン',
+    settingsAdminActiveDesc: '全88日分の質問とすべてのMDアイテムが解放されています。',
+    settingsAdminOffDesc: '一般ファン画面をプレビュー中です。',
+    settingsAdminToggleOn: '管理者 ON',
+    settingsAdminToggleOff: '一般モード',
+    profileAdminBanner: '👑 管理者モード有効 · すべてのMDアイテムを着せ替えできます！',
     profileTitle: 'マイアバター & MD着せ替え',
     profileSubtitle: 'ヘアスタイル · キャップ · トラックジャケット · ティボン · うちわ · スローガン',
     profileBannerTitle: (count) => `デイリー質問参加 · ${count}回完了`,
