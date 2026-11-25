@@ -11,6 +11,7 @@ export type ActiveModalType =
   | 'memos'
   | 'room'
   | 'profile'
+  | 'settings'
   | 'seatmap'
   | 'minigames';
 

@@ -37,6 +37,16 @@ export interface TranslationDict {
   actionGreet: string;
   actionSit: string;
   actionCry: string;
+  actionMenuBtn: string;
+  settingsBtn: string;
+  settingsTitle: string;
+  settingsAvatarLabel: string;
+  settingsAvatarBtn: string;
+  settingsLangLabel: string;
+  settingsSkyLabel: string;
+  settingsBgmLabel: string;
+  settingsBgmPlazaDesc: string;
+  settingsBgmArenaDesc: string;
   cryToast: string;
   speechPlaceholder: string;
   // Rooms
@@ -195,6 +205,16 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     actionGreet: '👋 인사',
     actionSit: '🪑 쉬기',
     actionCry: '😭 눈물 흘리기',
+    actionMenuBtn: '에바뛰 · 응원 · 감정',
+    settingsBtn: '환경설정',
+    settingsTitle: '환경설정',
+    settingsAvatarLabel: '내 아바타 & MD 꾸미기',
+    settingsAvatarBtn: '꾸미기 열기 →',
+    settingsLangLabel: '언어 설정',
+    settingsSkyLabel: '광장 하늘 시간대',
+    settingsBgmLabel: '배경음악 (BGM)',
+    settingsBgmPlazaDesc: '외부 광장에서는 「달리기」 1곡이 반복 재생됩니다.',
+    settingsBgmArenaDesc: '공연장 내부에서는 4곡이 순서대로 재생됩니다.',
     cryToast: '😭 감동의 눈물이 주르륵 흐릅니다... 씨엔블루 최고!!',
     speechPlaceholder: '머리 위 말풍선 한마디 띄우기... (예: 에바뛰콘 가보자고!)',
     rooms: [
@@ -385,6 +405,16 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     actionGreet: '👋 Greet',
     actionSit: '🪑 Rest',
     actionCry: '😭 Cry',
+    actionMenuBtn: 'Cheer · Emotes',
+    settingsBtn: 'Settings',
+    settingsTitle: 'Settings',
+    settingsAvatarLabel: 'My Avatar & MD',
+    settingsAvatarBtn: 'Customize →',
+    settingsLangLabel: 'Language',
+    settingsSkyLabel: 'Plaza Sky Time',
+    settingsBgmLabel: 'Background Music',
+    settingsBgmPlazaDesc: 'Outdoor Plaza plays "Running" on repeat.',
+    settingsBgmArenaDesc: 'Inside Arena plays 4 tracks in sequence.',
     cryToast: '😭 Tears of joy are streaming down... CNBLUE forever!!',
     speechPlaceholder: 'Floating speech bubble... (e.g. Let’s go EBDD!!)',
     rooms: [
@@ -575,6 +605,16 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     actionGreet: '👋 打招呼',
     actionSit: '🪑 休息',
     actionCry: '😭 流泪',
+    actionMenuBtn: '应援 · 动作',
+    settingsBtn: '设置',
+    settingsTitle: '环境设置',
+    settingsAvatarLabel: '我的角色 & 周边装扮',
+    settingsAvatarBtn: '打开装扮 →',
+    settingsLangLabel: '语言设置',
+    settingsSkyLabel: '广场天空时段',
+    settingsBgmLabel: '背景音乐 (BGM)',
+    settingsBgmPlazaDesc: '室外广场单曲循环《奔跑》BGM。',
+    settingsBgmArenaDesc: '场馆内部按顺序循环播放 4 首曲目。',
     cryToast: '😭 感动的泪水止不住流下来了... CNBLUE 最棒!!',
     speechPlaceholder: '发送头顶气泡留言... (例: EBDD 冲呀!)',
     rooms: [
@@ -760,6 +800,16 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     actionGreet: '👋 挨拶',
     actionSit: '🪑 休憩',
     actionCry: '😭 涙を流す',
+    actionMenuBtn: '応援 · エモート',
+    settingsBtn: '設定',
+    settingsTitle: '環境設定',
+    settingsAvatarLabel: 'マイアバター & MD着せ替え',
+    settingsAvatarBtn: '着せ替えを開く →',
+    settingsLangLabel: '言語設定',
+    settingsSkyLabel: '広場の空テーマ',
+    settingsBgmLabel: 'BGM 設定',
+    settingsBgmPlazaDesc: '屋外広場では「Running」1曲がリピート再生されます。',
+    settingsBgmArenaDesc: '会場内では4曲が順番に再生されます。',
     cryToast: '😭 感動の涙がぽろぽろ流れます... CNBLUE最高!!',
     speechPlaceholder: '頭上の吹き出しメッセージ... (例: エバティコン楽しもう!)',
     rooms: [

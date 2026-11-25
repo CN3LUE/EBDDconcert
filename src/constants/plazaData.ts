@@ -81,11 +81,27 @@ export const ROOM_LIST = [
   },
 ];
 
-export const AUDIO_TRACKS = [
-  { title: 'TRACK 01 · KEEP RUNNIN (BGM)', src: './audio/track-01.mp3' },
-  { title: 'TRACK 02 · 그러나, 꽃이었다 (BGM)', src: './audio/track-02.mp3' },
-  { title: 'TRACK 03 · 에바뛰 앵콜 (BGM)', src: './audio/track-03.mp3' },
+export const PLAZA_AUDIO_TRACK = {
+  title: '달리기 (광장 BGM)',
+  src: './assets/aistudio/CNBLUE______________________Special_Clip_4463e805.mp3',
+};
+
+export const ARENA_AUDIO_TRACKS = [
+  {
+    title: '공연장 LIVE TRACK 01',
+    src: './assets/aistudio/track-01_d0e9c2d5.mp3',
+  },
+  {
+    title: '공연장 LIVE TRACK 02',
+    src: './assets/aistudio/track-02_eea6f051.mp3',
+  },
+  {
+    title: '공연장 LIVE TRACK 03',
+    src: './assets/aistudio/track-03_3f96aa9e.mp3',
+  },
 ];
+
+export const AUDIO_TRACKS = ARENA_AUDIO_TRACKS;
 
 export const OUTFIT_OPTIONS: Array<{
   id: OutfitStyle;

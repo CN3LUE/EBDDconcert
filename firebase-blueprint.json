@@ -1,0 +1,200 @@
+{
+  "entities": {
+    "UserAccountState": {
+      "title": "UserAccountState",
+      "description": "Private user avatar customization, daily advent check-ins, and mini-game best scores.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "myProfile": {
+          "type": "object",
+          "description": "Avatar outfit, cap, hair, hand items, and seat selection."
+        },
+        "checkedDates": {
+          "type": "array",
+          "description": "List of checked-in YYYY-MM-DD dates (max 100)."
+        },
+        "adventAnswers": {
+          "type": "object",
+          "description": "Map of YYYY-MM-DD to user's private answer note."
+        },
+        "ebddJumps": {
+          "type": "number"
+        },
+        "runBestScore": {
+          "type": "number"
+        },
+        "roofBestScore": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "myProfile",
+        "checkedDates",
+        "adventAnswers",
+        "ebddJumps",
+        "runBestScore",
+        "roofBestScore",
+        "updatedAt"
+      ]
+    },
+    "PublicAdventAnswer": {
+      "title": "PublicAdventAnswer",
+      "description": "Anonymous shared daily Advent answer visible to fellow BOICE fans.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "dateStr": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^202[67]-[0-9]{2}-[0-9]{2}$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "authorUid",
+        "isPublic",
+        "dateStr",
+        "text",
+        "createdAt"
+      ]
+    },
+    "FlowerMemo": {
+      "title": "FlowerMemo",
+      "description": "3D flower cheer memo planted on the KSPO DOME plaza ground.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorId": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "seatZone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "color": {
+          "type": "string",
+          "maxLength": 7,
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "x": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "likes": {
+          "type": "number"
+        },
+        "createdAtLabel": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "authorUid",
+        "authorId",
+        "isPublic",
+        "author",
+        "seatZone",
+        "text",
+        "color",
+        "x",
+        "z",
+        "likes",
+        "createdAtLabel",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Read-only startup connection probe document.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "maxLength": 32
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccountState"
+      },
+      "description": "Owner-only user state document storing avatar customization, advent diary, and game high scores."
+    },
+    "/advent_answers/{answerId}": {
+      "schema": {
+        "$ref": "#/entities/PublicAdventAnswer"
+      },
+      "description": "Publicly listed anonymous advent answers shared across fans."
+    },
+    "/flower_memos/{memoId}": {
+      "schema": {
+        "$ref": "#/entities/FlowerMemo"
+      },
+      "description": "Publicly listed 3D flower cheer memos placed in the plaza."
+    },
+    "/test/{docId}": {
+      "schema": {
+        "$ref": "#/entities/ConnectionTest"
+      },
+      "description": "Connection health-check endpoint."
+    }
+  }
+}

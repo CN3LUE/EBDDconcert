@@ -3,24 +3,20 @@ import {
   Users,
   Sparkles,
   Calendar,
-  Music,
   Volume2,
   VolumeX,
-  Sun,
-  Sunset,
-  Moon,
   X,
   Send,
   Compass,
   Footprints,
   LayoutGrid,
   Building2,
-  Shirt,
   Star,
   MapPin,
   Gamepad2,
   Flame,
-  Globe,
+  Settings,
+  ChevronUp,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import {
@@ -39,7 +35,7 @@ import {
   ADVENT_END_DATE,
   ADVENT_START_DATE,
   ADVENT_UNLOCK_MILESTONES,
-  AUDIO_TRACKS,
+  ARENA_AUDIO_TRACKS,
   createRoomNpcs,
   DOME_ALBUM_SPINES,
   FLOWER_COLORS,
@@ -50,6 +46,7 @@ import {
   LANE_RADII,
   MAX_ROOM_CAPACITY,
   OUTFIT_OPTIONS,
+  PLAZA_AUDIO_TRACK,
   PLAZA_BENCHES,
   ROOM_LIST,
   TRACK_CENTER_X,
@@ -60,10 +57,15 @@ import {
   addPublicFlowerMemo,
   deletePublicFlowerMemo,
   initFirebaseAuth,
+  loadLocalUserState,
+  saveLocalUserState,
   saveUserCloudState,
+  signInWithGoogle,
+  signOutFirebase,
   subscribeFlowerMemos,
   subscribePublicAdventAnswers,
   subscribeUserCloudState,
+  togglePublicFlowerMemoLike,
   updatePublicFlowerMemo,
 } from './services/db';
 import {
@@ -84,6 +86,7 @@ import { FlowerMemosModal } from './components/modals/FlowerMemosModal';
 import { RoomSelectModal } from './components/modals/RoomSelectModal';
 import { ProfileModal } from './components/modals/ProfileModal';
 import { MiniGamesModal } from './components/modals/MiniGamesModal';
+import { SettingsModal } from './components/modals/SettingsModal';
 import type {
   ActiveModalType,
   AdventDailyItem,
@@ -109,6 +112,7 @@ export function App() {
   // --- 클라우드 인증 & 동기화 상태 ---
   const [user, setUser] = useState<User | null>(null);
   const [cloudSynced, setCloudSynced] = useState<boolean>(false);
+  const [authFallbackNeeded, setAuthFallbackNeeded] = useState<boolean>(false);
   const [publicAdventAnswers, setPublicAdventAnswers] = useState<PublicAdventAnswer[]>([]);
   const lastSavedSnapshotRef = useRef<string>('');
 
@@ -152,8 +156,7 @@ export function App() {
     }, 3200);
   }, []);
 
-  // --- 내 아바타 프로필 (기본 착장으로 시작, 어드벤트 질문 답변 시 공식 MD 순차 해금) ---
-  const [myProfile, setMyProfile] = useState<UserProfileState>(() => ({
+  const defaultProfileRef = useRef<UserProfileState>({
     name: `보이스_${Math.floor(100 + Math.random() * 899)}`,
     seatZone: ARENA_SECTIONS[0].label,
     hoodieColor: '#ffffff',
@@ -165,7 +168,14 @@ export function App() {
     hasWristband: true,
     leftHandItem: 'none',
     rightHandItem: 'none',
-  }));
+  });
+
+  const initialLocalStateRef = useRef(loadLocalUserState(defaultProfileRef.current));
+
+  // --- 내 아바타 프로필 (기본 착장으로 시작, 어드벤트 질문 답변 시 MD 순차 해금) ---
+  const [myProfile, setMyProfile] = useState<UserProfileState>(
+    () => initialLocalStateRef.current?.myProfile ?? defaultProfileRef.current
+  );
 
   const myProfileRef = useRef(myProfile);
   useEffect(() => {
@@ -245,28 +255,41 @@ export function App() {
     return todayKstStr;
   }, [todayKstStr]);
 
-  const [checkedDates, setCheckedDates] = useState<string[]>([]);
+  const [checkedDates, setCheckedDates] = useState<string[]>(
+    () => initialLocalStateRef.current?.checkedDates ?? []
+  );
   const [selectedAdventDate, setSelectedAdventDate] = useState<string>(defaultSelectedDate);
   const [selectedAdventMonth, setSelectedAdventMonth] = useState<string>(
     defaultSelectedDate.slice(0, 7)
   );
   const [adventAnswerInput, setAdventAnswerInput] = useState<string>('');
-  const [adventAnswers, setAdventAnswers] = useState<Record<string, string>>({});
+  const [adventAnswers, setAdventAnswers] = useState<Record<string, string>>(
+    () => initialLocalStateRef.current?.adventAnswers ?? {}
+  );
 
   // --- 모달 & 미니게임 & 오디오 ---
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [miniGameTab, setMiniGameTab] = useState<'run' | 'roof'>('run');
-  const [ebddJumps, setEbddJumps] = useState<number>(1);
-  const [runBestScore, setRunBestScore] = useState<number>(0);
-  const [roofBestScore, setRoofBestScore] = useState<number>(0);
+  const [ebddJumps, setEbddJumps] = useState<number>(
+    () => initialLocalStateRef.current?.ebddJumps ?? 1
+  );
+  const [runBestScore, setRunBestScore] = useState<number>(
+    () => initialLocalStateRef.current?.runBestScore ?? 0
+  );
+  const [roofBestScore, setRoofBestScore] = useState<number>(
+    () => initialLocalStateRef.current?.roofBestScore ?? 0
+  );
   const [adventTab, setAdventTab] = useState<'calendar' | 'diary' | 'peers'>('calendar');
+  const [actionMenuOpen, setActionMenuOpen] = useState<boolean>(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [trackIndex, setTrackIndex] = useState<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const viewModeAudioRef = useRef<ViewMode>('plaza');
+  viewModeAudioRef.current = viewMode;
 
   // 1) Firebase 인증 초기화
   useEffect(() => {
-    return initFirebaseAuth(setUser);
+    return initFirebaseAuth(setUser, setAuthFallbackNeeded);
   }, []);
 
   // 2) 인증 완료 후 Firestore 실시간 동기화
@@ -298,9 +321,8 @@ export function App() {
     };
   }, [user]);
 
-  // 3) 내 프로필·어드벤트 답변·미니게임 기록 자동 클라우드 저장 (디바운스)
+  // 3) 내 프로필·어드벤트 답변·미니게임 기록 로컬 + 클라우드 자동 저장
   useEffect(() => {
-    if (!user || !cloudSynced) return undefined;
     const payload = {
       myProfile,
       checkedDates,
@@ -309,6 +331,9 @@ export function App() {
       runBestScore,
       roofBestScore,
     };
+    saveLocalUserState(payload);
+
+    if (!user || !cloudSynced) return undefined;
     const serialized = JSON.stringify(payload);
     if (serialized === lastSavedSnapshotRef.current) return undefined;
 
@@ -408,43 +433,66 @@ export function App() {
   }, [showToast]);
 
   // ============================================================================
-  // 5. 배경 음악 (public/audio/track-01~03.mp3 호환)
+  // 5. 배경 음악 (광장: 달리기 1곡 반복 / 공연장: 3곡 순차 재생)
   // ============================================================================
-  const toggleAudio = useCallback(() => {
+  const activeTracks = useMemo(
+    () => (viewMode === 'plaza' ? [PLAZA_AUDIO_TRACK] : ARENA_AUDIO_TRACKS),
+    [viewMode]
+  );
+
+  const ensureAudioInstance = useCallback(() => {
     if (!audioRef.current) {
-      const audio = new Audio(AUDIO_TRACKS[trackIndex].src);
-      audio.loop = true;
+      const audio = new Audio();
       audio.volume = 0.45;
+      audio.addEventListener('ended', () => {
+        if (viewModeAudioRef.current === 'arena') {
+          setTrackIndex((prev) => {
+            const nextIdx = (prev + 1) % ARENA_AUDIO_TRACKS.length;
+            if (audioRef.current) {
+              audioRef.current.src = ARENA_AUDIO_TRACKS[nextIdx].src;
+              audioRef.current.loop = false;
+              audioRef.current.play().catch(() => {});
+            }
+            return nextIdx;
+          });
+        }
+      });
       audioRef.current = audio;
     }
-    const audio = audioRef.current;
+    return audioRef.current;
+  }, []);
+
+  const toggleAudio = useCallback(() => {
+    const audio = ensureAudioInstance();
+    const currentTrack = activeTracks[trackIndex % activeTracks.length] ?? activeTracks[0];
     if (isPlayingAudio) {
       audio.pause();
       setIsPlayingAudio(false);
     } else {
-      audio.src = AUDIO_TRACKS[trackIndex].src;
+      audio.src = currentTrack.src;
+      audio.loop = viewMode === 'plaza';
       audio
         .play()
         .then(() => {
           setIsPlayingAudio(true);
-          showToast(`🎵 ${AUDIO_TRACKS[trackIndex].title} 재생 중`);
+          showToast(`🎵 ${currentTrack.title} 재생 중`);
         })
         .catch(() => {
           setIsPlayingAudio(false);
-          showToast('🎵 오디오 파일은 GitHub Pages 배포 환경(public/audio)에서 자동 재생됩니다.');
+          showToast('🎵 브라우저에서 재생이 차단되었습니다. BGM 버튼을 다시 눌러주세요.');
         });
     }
-  }, [isPlayingAudio, trackIndex, showToast]);
+  }, [ensureAudioInstance, activeTracks, trackIndex, isPlayingAudio, viewMode, showToast]);
 
-  const nextAudioTrack = useCallback(() => {
-    const nextIdx = (trackIndex + 1) % AUDIO_TRACKS.length;
-    setTrackIndex(nextIdx);
-    if (audioRef.current && isPlayingAudio) {
-      audioRef.current.src = AUDIO_TRACKS[nextIdx].src;
-      audioRef.current.play().catch(() => {});
-    }
-    showToast(`🎵 다음 트랙: ${AUDIO_TRACKS[nextIdx].title}`);
-  }, [trackIndex, isPlayingAudio, showToast]);
+  // 광장 ↔ 공연장 이동 시 해당 구역 플레이리스트로 자동 전환
+  useEffect(() => {
+    setTrackIndex(0);
+    if (!audioRef.current || !isPlayingAudio) return;
+    const nextTrack = viewMode === 'plaza' ? PLAZA_AUDIO_TRACK : ARENA_AUDIO_TRACKS[0];
+    audioRef.current.src = nextTrack.src;
+    audioRef.current.loop = viewMode === 'plaza';
+    audioRef.current.play().catch(() => {});
+  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
@@ -2888,6 +2936,7 @@ export function App() {
 
     if (user) {
       addPublicFlowerMemo({
+        authorUid: user.uid,
         authorId: writerId,
         author: myProfile.name,
         seatZone: myProfile.seatZone,
@@ -2956,6 +3005,9 @@ export function App() {
   };
 
   const handleToggleMemoLike = (id: string) => {
+    const target = memosRef.current.find((m) => m.id === id);
+    const nextLikes = target ? Math.max(0, target.likedByMe ? target.likes - 1 : target.likes + 1) : 1;
+
     setMemos((prev) =>
       prev.map((m) =>
         m.id === id
@@ -2976,6 +3028,12 @@ export function App() {
           }
         : prev
     );
+
+    if (user && !id.startsWith('flower-')) {
+      togglePublicFlowerMemoLike(id, nextLikes).catch((err) =>
+        console.error('Toggle flower memo like error:', err)
+      );
+    }
   };
 
   const handleCheckInAdvent = (dateStr: string) => {
@@ -3007,7 +3065,7 @@ export function App() {
       ]);
 
       if (user) {
-        addPublicAdventAnswer(dateStr, answerText).catch((err) =>
+        addPublicAdventAnswer(user.uid, dateStr, answerText).catch((err) =>
           console.error('Save advent answer error:', err)
         );
       }
@@ -3192,92 +3250,27 @@ export function App() {
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
-            {viewMode === 'plaza' && (
-              <div className="flex items-center p-1 rounded-2xl bg-slate-900/75 backdrop-blur-md border border-white/15 shadow-lg">
-                <button
-                  onClick={() => setSkyTheme('day')}
-                  title={t.skyDay}
-                  className={`p-1.5 rounded-xl transition ${
-                    skyTheme === 'day'
-                      ? 'bg-sky-500 text-slate-950'
-                      : 'text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  <Sun className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setSkyTheme('sunset')}
-                  title={t.skySunset}
-                  className={`p-1.5 rounded-xl transition ${
-                    skyTheme === 'sunset'
-                      ? 'bg-amber-400 text-slate-950'
-                      : 'text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  <Sunset className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setSkyTheme('night')}
-                  title={t.skyNight}
-                  className={`p-1.5 rounded-xl transition ${
-                    skyTheme === 'night'
-                      ? 'bg-indigo-500 text-white'
-                      : 'text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  <Moon className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-center p-1 rounded-2xl bg-slate-900/75 backdrop-blur-md border border-white/15 shadow-lg">
-              <button
-                onClick={toggleAudio}
-                title={isPlayingAudio ? t.bgmStop : t.bgmPlay}
-                className={`p-1.5 rounded-xl transition ${
-                  isPlayingAudio
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-300 hover:bg-white/10'
-                }`}
-              >
-                {isPlayingAudio ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={nextAudioTrack}
-                title={t.bgmNext}
-                className="p-1.5 rounded-xl text-slate-300 hover:bg-white/10 transition"
-              >
-                <Music className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* 우측 상단 언어 선택 (한국어 / EN / 中文 / 日本語) */}
-            <div className="flex items-center p-1 rounded-2xl bg-slate-900/75 backdrop-blur-md border border-white/15 shadow-lg gap-0.5">
-              <Globe className="w-3.5 h-3.5 text-sky-400 ml-1.5 mr-0.5 hidden sm:block shrink-0" />
-              {LANG_OPTIONS.map((opt) => (
-                <button
-                  key={opt.code}
-                  type="button"
-                  onClick={() => handleChangeLang(opt.code)}
-                  title={opt.label}
-                  className={`px-1.5 sm:px-2 py-1 rounded-xl text-[10px] sm:text-[11px] font-extrabold transition whitespace-nowrap ${
-                    lang === opt.code
-                      ? 'bg-sky-500 text-slate-950 shadow'
-                      : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  {opt.short}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
+            <button
+              onClick={toggleAudio}
+              title={isPlayingAudio ? t.bgmStop : t.bgmPlay}
+              className={`p-2 sm:px-3 sm:py-2 rounded-2xl backdrop-blur-md border text-xs font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 ${
+                isPlayingAudio
+                  ? 'bg-blue-600/90 border-sky-300/60 text-white'
+                  : 'bg-slate-900/80 border-white/15 text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              {isPlayingAudio ? <Volume2 className="w-4 h-4 shrink-0" /> : <VolumeX className="w-4 h-4 shrink-0" />}
+              <span className="hidden sm:inline whitespace-nowrap">BGM</span>
+            </button>
 
             <button
-              onClick={() => setActiveModal('profile')}
-              className="px-2.5 py-2 sm:px-3 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-xs font-extrabold text-white flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap"
+              onClick={() => setActiveModal('settings')}
+              title={t.settingsBtn}
+              className="px-2.5 py-2 sm:px-3.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-[11px] sm:text-xs font-extrabold text-white flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap"
             >
-              <Shirt className="w-4 h-4 text-sky-400 shrink-0" />
-              <span className="hidden sm:inline max-w-[96px] truncate">{myProfile.name}</span>
+              <Settings className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>{t.settingsBtn}</span>
             </button>
           </div>
         </header>
@@ -3371,96 +3364,139 @@ export function App() {
         </div>
       )}
 
-      {/* 하단 액션 바 & 한마디 말풍선 입력 */}
-      <footer className="absolute bottom-0 left-0 right-0 z-20 p-2.5 sm:p-4 flex flex-col items-center gap-1.5 sm:gap-2 pointer-events-none">
-        <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pointer-events-auto max-w-full">
+      {/* 하단 액션 바 (달리기 RUN + 응원/감정 5종 메뉴) & 한마디 말풍선 입력 */}
+      <footer className="absolute bottom-0 left-0 right-0 z-20 p-2.5 sm:p-4 flex flex-col items-center gap-2 pointer-events-none">
+        <div className="relative flex items-center justify-center gap-2 pointer-events-auto">
           <button
-            onClick={handleTrackSprint}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-extrabold flex items-center gap-1 sm:gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
+            onClick={() => {
+              setActionMenuOpen(false);
+              handleTrackSprint();
+            }}
+            className={`px-4 py-2.5 rounded-2xl backdrop-blur-md border text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
               myAction === 'run'
                 ? 'bg-sky-500 border-white text-slate-950'
                 : 'bg-gradient-to-r from-blue-600 to-sky-500 border-sky-300/60 text-white hover:from-blue-500 hover:to-sky-400'
             }`}
           >
-            <Footprints className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <Footprints className="w-4 h-4 shrink-0" />
             <span>{myAction === 'run' ? t.actionRunStop : t.actionRunStart}</span>
           </button>
 
-          <button
-            onClick={() => triggerAction('cheer', '🔥 에브리바디 뛰어!! 에바뛰 점프!!')}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-extrabold flex items-center gap-1 sm:gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
-              myAction === 'cheer'
-                ? 'bg-amber-500 border-amber-200 text-slate-950'
-                : 'bg-slate-900/80 border-white/15 text-slate-100 hover:bg-slate-800'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 shrink-0" />
-            <span>{t.actionEbdd}</span>
-          </button>
+          <div className="relative">
+            {actionMenuOpen && (
+              <div className="absolute bottom-full right-0 sm:left-1/2 sm:-translate-x-1/2 mb-2 w-52 p-2 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-sky-400/35 shadow-2xl flex flex-col gap-1 z-30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerAction('cheer', '🔥 에브리바디 뛰어!! 에바뛰 점프!!');
+                    setActionMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition text-left ${
+                    myAction === 'cheer'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-100 hover:bg-white/10'
+                  }`}
+                >
+                  <Flame className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{t.actionEbdd}</span>
+                </button>
 
-          <button
-            onClick={() => {
-              const holdingSlogan =
-                myProfile.leftHandItem === 'slogan' || myProfile.rightHandItem === 'slogan';
-              triggerAction(
-                'wave',
-                holdingSlogan
-                  ? '💙 양손으로 CNBLUE 슬로건을 높이 들어 흔듭니다!'
-                  : '💎 뛰봉을 힘차게 흔듭니다!'
-              );
-            }}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
-              myAction === 'wave'
-                ? 'bg-blue-600 border-blue-300 text-white'
-                : 'bg-slate-900/80 border-white/15 text-slate-100 hover:bg-slate-800'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400 shrink-0" />
-            <span>
-              {myProfile.leftHandItem === 'slogan' || myProfile.rightHandItem === 'slogan'
-                ? t.actionSloganWave
-                : t.actionLightstickWave}
-            </span>
-          </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const holdingSlogan =
+                      myProfile.leftHandItem === 'slogan' || myProfile.rightHandItem === 'slogan';
+                    triggerAction(
+                      'wave',
+                      holdingSlogan
+                        ? '💙 양손으로 CNBLUE 슬로건을 높이 들어 흔듭니다!'
+                        : '💎 뛰봉을 힘차게 흔듭니다!'
+                    );
+                    setActionMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-left ${
+                    myAction === 'wave'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-100 hover:bg-white/10'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>
+                    {myProfile.leftHandItem === 'slogan' || myProfile.rightHandItem === 'slogan'
+                      ? t.actionSloganWave
+                      : t.actionLightstickWave}
+                  </span>
+                </button>
 
-          <button
-            onClick={() => triggerAction('greet', '🙇‍♂️ 주변 보이스 팬들에게 반갑게 인사합니다!')}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-lg transition active:scale-95 whitespace-nowrap ${
-              myAction === 'greet'
-                ? 'bg-emerald-600 border-emerald-300 text-white'
-                : 'bg-slate-900/80 border-white/15 text-slate-100 hover:bg-slate-800'
-            }`}
-          >
-            <span>{t.actionGreet}</span>
-          </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerAction('greet', '🙇‍♂️ 주변 보이스 팬들에게 반갑게 인사합니다!');
+                    setActionMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-left ${
+                    myAction === 'greet'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-100 hover:bg-white/10'
+                  }`}
+                >
+                  <span>{t.actionGreet}</span>
+                </button>
 
-          <button
-            onClick={() => handleSitOnBench()}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-lg transition active:scale-95 whitespace-nowrap ${
-              myAction === 'sit'
-                ? 'bg-indigo-600 border-indigo-300 text-white'
-                : 'bg-slate-900/80 border-white/15 text-slate-100 hover:bg-slate-800'
-            }`}
-          >
-            <span>{t.actionSit}</span>
-          </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSitOnBench();
+                    setActionMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-left ${
+                    myAction === 'sit'
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-100 hover:bg-white/10'
+                  }`}
+                >
+                  <span>{t.actionSit}</span>
+                </button>
 
-          <button
-            onClick={() => {
-              if (myAction === 'cry') {
-                triggerAction('idle');
-              } else {
-                triggerAction('cry', t.cryToast);
-              }
-            }}
-            className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-lg transition active:scale-95 whitespace-nowrap ${
-              myAction === 'cry'
-                ? 'bg-sky-500 border-sky-200 text-slate-950'
-                : 'bg-slate-900/80 border-white/15 text-slate-100 hover:bg-slate-800'
-            }`}
-          >
-            <span>{t.actionCry}</span>
-          </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (myAction === 'cry') {
+                      triggerAction('idle');
+                    } else {
+                      triggerAction('cry', t.cryToast);
+                    }
+                    setActionMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-left ${
+                    myAction === 'cry'
+                      ? 'bg-sky-500 text-slate-950'
+                      : 'text-slate-100 hover:bg-white/10'
+                  }`}
+                >
+                  <span>{t.actionCry}</span>
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setActionMenuOpen((prev) => !prev)}
+              className={`px-4 py-2.5 rounded-2xl backdrop-blur-md border text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
+                actionMenuOpen || ['cheer', 'wave', 'greet', 'sit', 'cry'].includes(myAction)
+                  ? 'bg-indigo-600/90 border-sky-300/70 text-white'
+                  : 'bg-slate-900/85 border-white/20 text-slate-100 hover:bg-slate-800'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>{t.actionMenuBtn}</span>
+              <ChevronUp
+                className={`w-4 h-4 shrink-0 transition-transform ${
+                  actionMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         <form
@@ -3555,7 +3591,7 @@ export function App() {
         />
       )}
 
-      {/* 모달 4: 내 아바타 & 공식 MD 꾸미기 */}
+      {/* 모달 4: 내 아바타 & MD 꾸미기 */}
       {activeModal === 'profile' && (
         <ProfileModal
           threeReady={threeReady}
@@ -3563,6 +3599,21 @@ export function App() {
           setMyProfile={setMyProfile}
           answeredCount={answeredCount}
           nextUnlockMilestone={nextUnlockMilestone}
+          firebaseUser={user}
+          authFallbackNeeded={authFallbackNeeded}
+          onSignInGoogle={() => {
+            signInWithGoogle()
+              .then(() => showToast('☁️ Google 계정으로 클라우드 동기화가 연결되었습니다!'))
+              .catch((err) => {
+                console.error('Google sign-in error:', err);
+                showToast('로그인 창이 닫혔거나 팝업이 차단되었습니다.');
+              });
+          }}
+          onSignOutGoogle={() => {
+            signOutFirebase()
+              .then(() => showToast('로그아웃되었습니다.'))
+              .catch((err) => console.error('Sign out error:', err));
+          }}
           onOpenAdvent={() => setActiveModal('advent')}
           onShowToast={showToast}
           onClose={() => setActiveModal('none')}
@@ -3602,6 +3653,18 @@ export function App() {
           onUpdateRunBest={handleUpdateRunBest}
           onUpdateRoofBest={handleUpdateRoofBest}
           onRewardToast={showToast}
+          onClose={() => setActiveModal('none')}
+        />
+      )}
+
+      {/* 모달 7: 환경설정 (프로필/MD · 언어 · 하늘) */}
+      {activeModal === 'settings' && (
+        <SettingsModal
+          myProfile={myProfile}
+          skyTheme={skyTheme}
+          onChangeSkyTheme={setSkyTheme}
+          onChangeLang={handleChangeLang}
+          onOpenProfile={() => setActiveModal('profile')}
           onClose={() => setActiveModal('none')}
         />
       )}

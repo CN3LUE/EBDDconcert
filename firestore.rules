@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidProfileMap(p) {
+      return p is map
+        && p.keys().hasAll([
+          'name', 'seatZone', 'hoodieColor', 'lightstickColor',
+          'hairStyle', 'outfitStyle', 'capStyle',
+          'hasSloganTowel', 'hasWristband', 'leftHandItem', 'rightHandItem'
+        ])
+        && p.keys().hasOnly([
+          'name', 'seatZone', 'hoodieColor', 'lightstickColor',
+          'hairStyle', 'outfitStyle', 'capStyle',
+          'hasSloganTowel', 'hasWristband', 'leftHandItem', 'rightHandItem'
+        ])
+        && p.name is string && p.name.size() >= 1 && p.name.size() <= 20
+        && p.seatZone is string && p.seatZone.size() >= 1 && p.seatZone.size() <= 40
+        && p.hoodieColor is string && p.hoodieColor.size() == 7 && p.hoodieColor.matches('^#[0-9a-fA-F]{6}$')
+        && p.lightstickColor is string && p.lightstickColor.size() == 7 && p.lightstickColor.matches('^#[0-9a-fA-F]{6}$')
+        && p.hairStyle in ['long', 'ponytail', 'short']
+        && p.outfitStyle in ['track_jacket', 'white_tee', 'navy_tee', 'sky_tee']
+        && p.capStyle in ['official_cap', 'navy_cap', 'none']
+        && p.hasSloganTowel is bool
+        && p.hasWristband is bool
+        && p.leftHandItem in ['fan', 'lightstick', 'slogan', 'none']
+        && p.rightHandItem in ['fan', 'lightstick', 'slogan', 'none'];
+    }
+
+    function isValidCheckedDates(dates) {
+      return dates is list
+        && dates.size() <= 100
+        && (dates.size() == 0 || (dates[0] is string && dates[0].size() == 10));
+    }
+
+    function isValidUserState(data) {
+      return data.keys().hasAll([
+          'uid', 'myProfile', 'checkedDates', 'adventAnswers',
+          'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'myProfile', 'checkedDates', 'adventAnswers',
+          'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.uid == request.auth.uid
+        && isValidProfileMap(data.myProfile)
+        && isValidCheckedDates(data.checkedDates)
+        && data.adventAnswers is map
+        && data.adventAnswers.size() <= 100
+        && data.ebddJumps is number && data.ebddJumps >= 0 && data.ebddJumps <= 100000
+        && data.runBestScore is number && data.runBestScore >= 0 && data.runBestScore <= 1000000
+        && data.roofBestScore is number && data.roofBestScore >= 0 && data.roofBestScore <= 1000000
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAdventAnswer(data) {
+      return data.keys().hasAll(['authorUid', 'isPublic', 'dateStr', 'text', 'createdAt'])
+        && data.keys().hasOnly(['authorUid', 'isPublic', 'dateStr', 'text', 'createdAt'])
+        && data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128
+        && data.authorUid == request.auth.uid
+        && data.isPublic == true
+        && data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^202[67]-[0-9]{2}-[0-9]{2}$')
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 120
+        && data.createdAt == request.time;
+    }
+
+    function isValidFlowerMemo(data) {
+      return data.keys().hasAll([
+          'authorUid', 'authorId', 'isPublic', 'author', 'seatZone',
+          'text', 'color', 'x', 'z', 'likes', 'createdAtLabel', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'authorUid', 'authorId', 'isPublic', 'author', 'seatZone',
+          'text', 'color', 'x', 'z', 'likes', 'createdAtLabel', 'createdAt', 'updatedAt'
+        ])
+        && data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128
+        && data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 64
+        && data.authorId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.isPublic == true
+        && data.author is string && data.author.size() >= 1 && data.author.size() <= 20
+        && data.seatZone is string && data.seatZone.size() >= 1 && data.seatZone.size() <= 40
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 60
+        && data.color is string && data.color.size() == 7 && data.color.matches('^#[0-9a-fA-F]{6}$')
+        && data.x is number && data.x >= -120 && data.x <= 120
+        && data.z is number && data.z >= -120 && data.z <= 120
+        && data.likes is number && data.likes >= 0 && data.likes <= 1000000
+        && data.createdAtLabel is string && data.createdAtLabel.size() >= 1 && data.createdAtLabel.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    // 1. User private state
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUserState(incoming());
+      allow update: if isValidId(userId) && isOwner(userId)
+        && isValidUserState(incoming())
+        && incoming().uid == existing().uid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'myProfile', 'checkedDates', 'adventAnswers',
+          'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isOwner(userId);
+    }
+
+    // 2. Public Advent answers
+    match /advent_answers/{answerId} {
+      allow get: if isValidId(answerId) && isSignedIn() && (existing().isPublic == true || existing().authorUid == request.auth.uid);
+      allow list: if isSignedIn() && existing().isPublic == true;
+      allow create: if isValidId(answerId) && isSignedIn() && isValidAdventAnswer(incoming());
+      allow update: if false;
+      allow delete: if isValidId(answerId) && isSignedIn() && existing().authorUid == request.auth.uid;
+    }
+
+    // 3. Public Flower memos
+    match /flower_memos/{memoId} {
+      allow get: if isValidId(memoId) && isSignedIn() && (existing().isPublic == true || existing().authorUid == request.auth.uid);
+      allow list: if isSignedIn() && existing().isPublic == true;
+      allow create: if isValidId(memoId) && isSignedIn()
+        && isValidFlowerMemo(incoming())
+        && incoming().authorUid == request.auth.uid
+        && incoming().likes == 1
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(memoId) && isSignedIn()
+        && isValidFlowerMemo(incoming())
+        && incoming().authorUid == existing().authorUid
+        && incoming().authorId == existing().authorId
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Action A: Author edits text or petal color
+          (
+            existing().authorUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'color', 'updatedAt'])
+          )
+          ||
+          // Action B: Fan toggles like (+1 or -1)
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'updatedAt'])
+            && (incoming().likes == existing().likes + 1 || incoming().likes == existing().likes - 1)
+          )
+        );
+      allow delete: if isValidId(memoId) && isSignedIn() && existing().authorUid == request.auth.uid;
+    }
+
+    // 4. Connection check endpoint
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+    }
+  }
+}
