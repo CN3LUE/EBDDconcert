@@ -1,0 +1,6 @@
+{
+  "name": "KSPO DOME 3D Fan Plaza",
+  "description": "CNBLUE 2027.02.20-21 EBDD 에바뛰콘 3D 러닝 트랙 팬 광장 & 인터랙티브 공연장",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
