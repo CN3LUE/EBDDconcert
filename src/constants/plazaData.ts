@@ -81,27 +81,73 @@ export const ROOM_LIST = [
   },
 ];
 
-export const PLAZA_AUDIO_TRACK = {
+export interface AudioTrackItem {
+  title: string;
+  src: string;
+  duration: number;
+}
+
+export const PLAZA_AUDIO_TRACK: AudioTrackItem = {
   title: '달리기 (광장 BGM)',
   src: './assets/aistudio/CNBLUE______________________Special_Clip_4463e805.mp3',
+  duration: 185.913458,
 };
 
-export const ARENA_AUDIO_TRACKS = [
+export const ARENA_AUDIO_TRACKS: AudioTrackItem[] = [
   {
     title: '공연장 LIVE TRACK 01',
     src: './assets/aistudio/track-01_d0e9c2d5.mp3',
+    duration: 275.952,
   },
   {
     title: '공연장 LIVE TRACK 02',
     src: './assets/aistudio/track-02_eea6f051.mp3',
+    duration: 322.896,
   },
   {
     title: '공연장 LIVE TRACK 03',
     src: './assets/aistudio/track-03_3f96aa9e.mp3',
+    duration: 270.552,
   },
 ];
 
 export const AUDIO_TRACKS = ARENA_AUDIO_TRACKS;
+
+export function getLiveRadioState(
+  mode: 'plaza' | 'arena',
+  nowMs: number = Date.now()
+): { trackIndex: number; track: AudioTrackItem; currentTime: number } {
+  const nowSec = nowMs / 1000;
+  if (mode === 'plaza') {
+    const dur = PLAZA_AUDIO_TRACK.duration;
+    const currentTime = ((nowSec % dur) + dur) % dur;
+    return {
+      trackIndex: 0,
+      track: PLAZA_AUDIO_TRACK,
+      currentTime,
+    };
+  }
+
+  const totalDur = ARENA_AUDIO_TRACKS.reduce((sum, t) => sum + t.duration, 0);
+  let cursor = ((nowSec % totalDur) + totalDur) % totalDur;
+  for (let i = 0; i < ARENA_AUDIO_TRACKS.length; i++) {
+    const t = ARENA_AUDIO_TRACKS[i];
+    if (cursor < t.duration || i === ARENA_AUDIO_TRACKS.length - 1) {
+      return {
+        trackIndex: i,
+        track: t,
+        currentTime: Math.max(0, Math.min(cursor, t.duration - 0.1)),
+      };
+    }
+    cursor -= t.duration;
+  }
+
+  return {
+    trackIndex: 0,
+    track: ARENA_AUDIO_TRACKS[0],
+    currentTime: 0,
+  };
+}
 
 export const OUTFIT_OPTIONS: Array<{
   id: OutfitStyle;

@@ -48,6 +48,10 @@ export interface TranslationDict {
   settingsBgmPlazaDesc: string;
   settingsBgmArenaDesc: string;
   cryToast: string;
+  yonghwaEyeTitle: string;
+  yonghwaEyeQuestion: string;
+  yonghwaEyeYes: string;
+  yonghwaEyeNo: string;
   speechPlaceholder: string;
   // Rooms
   rooms: Array<{ name: string; desc: string }>;
@@ -215,7 +219,11 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsBgmLabel: '배경음악 (BGM)',
     settingsBgmPlazaDesc: '외부 광장에서는 「달리기」 1곡이 반복 재생됩니다.',
     settingsBgmArenaDesc: '공연장 내부에서는 4곡이 순서대로 재생됩니다.',
-    cryToast: '😭 감동의 눈물이 주르륵 흐릅니다... 씨엔블루 최고!!',
+    cryToast: '😭 눈물이 차올라서 고갤 들어..💧',
+    yonghwaEyeTitle: '👀 정용화와 눈이 마주쳤습니다.',
+    yonghwaEyeQuestion: '뛰시겠습니까?',
+    yonghwaEyeYes: '예',
+    yonghwaEyeNo: '아니오',
     speechPlaceholder: '머리 위 말풍선 한마디 띄우기... (예: 에바뛰콘 가보자고!)',
     rooms: [
       { name: '1레인', desc: '' },
@@ -415,7 +423,11 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsBgmLabel: 'Background Music',
     settingsBgmPlazaDesc: 'Outdoor Plaza plays "Running" on repeat.',
     settingsBgmArenaDesc: 'Inside Arena plays 4 tracks in sequence.',
-    cryToast: '😭 Tears of joy are streaming down... CNBLUE forever!!',
+    cryToast: '😭 Tears welling up, I look up to the sky..💧',
+    yonghwaEyeTitle: '👀 You locked eyes with Jung Yonghwa.',
+    yonghwaEyeQuestion: 'Will you jump?',
+    yonghwaEyeYes: 'Yes',
+    yonghwaEyeNo: 'No',
     speechPlaceholder: 'Floating speech bubble... (e.g. Let’s go EBDD!!)',
     rooms: [
       { name: 'Lane 1', desc: '' },
@@ -615,7 +627,11 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsBgmLabel: '背景音乐 (BGM)',
     settingsBgmPlazaDesc: '室外广场单曲循环《奔跑》BGM。',
     settingsBgmArenaDesc: '场馆内部按顺序循环播放 4 首曲目。',
-    cryToast: '😭 感动的泪水止不住流下来了... CNBLUE 最棒!!',
+    cryToast: '😭 泪水涌上来只能仰起头..💧',
+    yonghwaEyeTitle: '👀 和郑容和对视了！',
+    yonghwaEyeQuestion: '要一起跳起来吗？',
+    yonghwaEyeYes: '是',
+    yonghwaEyeNo: '否',
     speechPlaceholder: '发送头顶气泡留言... (例: EBDD 冲呀!)',
     rooms: [
       { name: '1跑道', desc: '' },
@@ -810,7 +826,11 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsBgmLabel: 'BGM 設定',
     settingsBgmPlazaDesc: '屋外広場では「Running」1曲がリピート再生されます。',
     settingsBgmArenaDesc: '会場内では4曲が順番に再生されます。',
-    cryToast: '😭 感動の涙がぽろぽろ流れます... CNBLUE最高!!',
+    cryToast: '😭 涙があふれて見上げるよ..💧',
+    yonghwaEyeTitle: '👀 ジョン・ヨンファと目が合いました。',
+    yonghwaEyeQuestion: 'ジャンプしますか？',
+    yonghwaEyeYes: 'はい',
+    yonghwaEyeNo: 'いいえ',
     speechPlaceholder: '頭上の吹き出しメッセージ... (例: エバティコン楽しもう!)',
     rooms: [
       { name: '1レーン', desc: '' },

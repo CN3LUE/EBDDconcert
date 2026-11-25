@@ -35,18 +35,17 @@ import {
   ADVENT_END_DATE,
   ADVENT_START_DATE,
   ADVENT_UNLOCK_MILESTONES,
-  ARENA_AUDIO_TRACKS,
   createRoomNpcs,
   DOME_ALBUM_SPINES,
   FLOWER_COLORS,
   getConcertDDay,
   getKstTodayStr,
   getLanePosition,
+  getLiveRadioState,
   INITIAL_MEMOS,
   LANE_RADII,
   MAX_ROOM_CAPACITY,
   OUTFIT_OPTIONS,
-  PLAZA_AUDIO_TRACK,
   PLAZA_BENCHES,
   ROOM_LIST,
   TRACK_CENTER_X,
@@ -281,8 +280,12 @@ export function App() {
   );
   const [adventTab, setAdventTab] = useState<'calendar' | 'diary' | 'peers'>('calendar');
   const [actionMenuOpen, setActionMenuOpen] = useState<boolean>(false);
+  const [yonghwaEyeContactOpen, setYonghwaEyeContactOpen] = useState<boolean>(false);
+  const eyeContactCooldownUntilRef = useRef<number>(0);
+  const yonghwaShoutTimerRef = useRef<number | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-  const [trackIndex, setTrackIndex] = useState<number>(0);
+  const isPlayingAudioRef = useRef<boolean>(false);
+  isPlayingAudioRef.current = isPlayingAudio;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const viewModeAudioRef = useRef<ViewMode>('plaza');
   viewModeAudioRef.current = viewMode;
@@ -433,75 +436,130 @@ export function App() {
   }, [showToast]);
 
   // ============================================================================
-  // 5. 배경 음악 (광장: 달리기 1곡 반복 / 공연장: 3곡 순차 재생)
+  // 5. 실시간 동기화 배경 음악 (모든 접속자가 같은 시간대 구간을 함께 청취)
   // ============================================================================
-  const activeTracks = useMemo(
-    () => (viewMode === 'plaza' ? [PLAZA_AUDIO_TRACK] : ARENA_AUDIO_TRACKS),
-    [viewMode]
-  );
+  const syncAndPlayAudio = useCallback(
+    (mode: ViewMode, showNotice: boolean) => {
+      if (!audioRef.current) {
+        const created = new Audio();
+        created.volume = 0.45;
+        created.addEventListener('ended', () => {
+          if (!isPlayingAudioRef.current) return;
+          const activeMode = viewModeAudioRef.current;
+          const nextLive = getLiveRadioState(activeMode, Date.now() + 350);
+          if (audioRef.current) {
+            audioRef.current.src = nextLive.track.src;
+            audioRef.current.loop = activeMode === 'plaza';
+            const onNextMeta = () => {
+              if (!audioRef.current) return;
+              audioRef.current.removeEventListener('loadedmetadata', onNextMeta);
+              try {
+                audioRef.current.currentTime = nextLive.currentTime;
+              } catch {
+                // ignore seek errors before ready
+              }
+            };
+            audioRef.current.addEventListener('loadedmetadata', onNextMeta);
+            audioRef.current.play().catch(() => {});
+          }
+        });
+        audioRef.current = created;
+      }
 
-  const ensureAudioInstance = useCallback(() => {
-    if (!audioRef.current) {
-      const audio = new Audio();
-      audio.volume = 0.45;
-      audio.addEventListener('ended', () => {
-        if (viewModeAudioRef.current === 'arena') {
-          setTrackIndex((prev) => {
-            const nextIdx = (prev + 1) % ARENA_AUDIO_TRACKS.length;
-            if (audioRef.current) {
-              audioRef.current.src = ARENA_AUDIO_TRACKS[nextIdx].src;
-              audioRef.current.loop = false;
-              audioRef.current.play().catch(() => {});
-            }
-            return nextIdx;
-          });
+      const audio = audioRef.current;
+      const live = getLiveRadioState(mode);
+      const targetHref = new URL(live.track.src, window.location.href).href;
+      const isSameSrc = audio.src === targetHref;
+      audio.loop = mode === 'plaza';
+
+      const applyLivePosition = () => {
+        const fresh = getLiveRadioState(mode);
+        const dur =
+          Number.isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : fresh.track.duration;
+        const safeTime = Math.min(Math.max(0, fresh.currentTime), Math.max(0, dur - 0.25));
+        try {
+          audio.currentTime = safeTime;
+        } catch {
+          // ignore if seek not yet ready
         }
-      });
-      audioRef.current = audio;
-    }
-    return audioRef.current;
-  }, []);
+        return fresh;
+      };
 
-  const toggleAudio = useCallback(() => {
-    const audio = ensureAudioInstance();
-    const currentTrack = activeTracks[trackIndex % activeTracks.length] ?? activeTracks[0];
-    if (isPlayingAudio) {
-      audio.pause();
-      setIsPlayingAudio(false);
-    } else {
-      audio.src = currentTrack.src;
-      audio.loop = viewMode === 'plaza';
+      if (!isSameSrc) {
+        audio.src = live.track.src;
+        const syncIfDrifted = () => {
+          if (audio.src !== targetHref) return;
+          const fresh = getLiveRadioState(mode);
+          if (Math.abs(audio.currentTime - fresh.currentTime) > 1.5) {
+            applyLivePosition();
+          }
+        };
+        audio.addEventListener('loadedmetadata', syncIfDrifted, { once: true });
+        audio.addEventListener('canplay', syncIfDrifted, { once: true });
+      } else if (audio.readyState >= 1) {
+        applyLivePosition();
+      }
+
       audio
         .play()
         .then(() => {
           setIsPlayingAudio(true);
-          showToast(`🎵 ${currentTrack.title} 재생 중`);
+          if (audio.readyState >= 1) {
+            const fresh = getLiveRadioState(mode);
+            if (Math.abs(audio.currentTime - fresh.currentTime) > 1.2) {
+              applyLivePosition();
+            }
+          }
+          if (showNotice) {
+            showToast(`🎵 ${live.track.title} (실시간 동기화 재생 중)`);
+          }
         })
         .catch(() => {
           setIsPlayingAudio(false);
           showToast('🎵 브라우저에서 재생이 차단되었습니다. BGM 버튼을 다시 눌러주세요.');
         });
+    },
+    [showToast]
+  );
+
+  const toggleAudio = useCallback(() => {
+    if (isPlayingAudio && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlayingAudio(false);
+    } else {
+      syncAndPlayAudio(viewModeAudioRef.current, true);
     }
-  }, [ensureAudioInstance, activeTracks, trackIndex, isPlayingAudio, viewMode, showToast]);
+  }, [isPlayingAudio, syncAndPlayAudio]);
 
-  // 광장 ↔ 공연장 이동 시 해당 구역 플레이리스트로 자동 전환
+  // 광장 ↔ 공연장 이동 시 해당 구역의 실시간 재생 지점으로 자동 전환
   useEffect(() => {
-    setTrackIndex(0);
-    if (!audioRef.current || !isPlayingAudio) return;
-    const nextTrack = viewMode === 'plaza' ? PLAZA_AUDIO_TRACK : ARENA_AUDIO_TRACKS[0];
-    audioRef.current.src = nextTrack.src;
-    audioRef.current.loop = viewMode === 'plaza';
-    audioRef.current.play().catch(() => {});
-  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!audioRef.current || !isPlayingAudioRef.current) return;
+    syncAndPlayAudio(viewMode, false);
+  }, [viewMode, syncAndPlayAudio]);
 
+  // 모바일/백그라운드 복귀 시 다른 팬들과 재생 위치 재동기화
   useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isPlayingAudioRef.current && audioRef.current) {
+        const mode = viewModeAudioRef.current;
+        const live = getLiveRadioState(mode);
+        const targetHref = new URL(live.track.src, window.location.href).href;
+        if (audioRef.current.src !== targetHref || Math.abs(audioRef.current.currentTime - live.currentTime) > 2.2) {
+          syncAndPlayAudio(mode, false);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
     };
-  }, []);
+  }, [syncAndPlayAudio]);
 
   // ============================================================================
   // 6. 프로필 변경 & 3D 아바타 MD 착장 실시간 동기화
@@ -599,6 +657,11 @@ export function App() {
         objs.arenaWorldGroup.visible = nextMode === 'arena';
       }
       if (nextMode === 'arena') {
+        setActiveModal((prev) =>
+          prev === 'advent' || prev === 'memos' || prev === 'room' || prev === 'minigames'
+            ? 'none'
+            : prev
+        );
         const seat = getSeatSectionByLabel(customSeatLabel || myProfileRef.current.seatZone);
         myPosRef.current.x = seat.x;
         myPosRef.current.y = seat.y;
@@ -609,7 +672,7 @@ export function App() {
         myPosRef.current.rotationY = Math.atan2(-seat.x, -4.5 - seat.z);
         myActionRef.current = 'wave';
         setMyAction('wave');
-        showToast(`🏟️ KSPO DOME 내부 [${seat.label}]에 입장했습니다!`);
+        showToast(`🏟️ [${seat.label}]에 입장했습니다!`);
       } else {
         const room = ROOM_LIST[currentRoomIdRef.current - 1] || ROOM_LIST[0];
         const pos = getLanePosition(room.id - 1, room.spawnAngle);
@@ -870,7 +933,7 @@ export function App() {
         myPosRef.current.rotationY = targetBench.rot;
         myActionRef.current = 'sit';
         setMyAction('sit');
-        showToast('🪑 벤치에 앉아 잠시 숨을 고릅니다.');
+        showToast('🪑 벤치에 앉아 잠시 쉬어갑니다!');
         return;
       }
 
@@ -880,7 +943,7 @@ export function App() {
       myPosRef.current.targetY = 0;
       myActionRef.current = 'walk';
       setMyAction('walk');
-      showToast('🪑 가까운 벤치로 걸어가서 앉습니다!');
+      showToast('🪑 가까운 벤치로 걸어갑니다!');
     },
     [triggerAction, showToast]
   );
@@ -917,6 +980,87 @@ export function App() {
     },
     [speechInput]
   );
+
+  // 공연장에서 5초 이상 가만히 있으면 정용화 눈맞춤 팝업 표시
+  useEffect(() => {
+    if (viewMode !== 'arena') {
+      setYonghwaEyeContactOpen(false);
+      eyeContactCooldownUntilRef.current = 0;
+      return undefined;
+    }
+    if (
+      activeModal !== 'none' ||
+      yonghwaEyeContactOpen ||
+      (myAction !== 'idle' && myAction !== 'wave')
+    ) {
+      return undefined;
+    }
+
+    const waitMs = Math.max(5000, eyeContactCooldownUntilRef.current - Date.now());
+    const timer = window.setTimeout(() => {
+      if (
+        viewModeRef.current === 'arena' &&
+        (myActionRef.current === 'idle' || myActionRef.current === 'wave')
+      ) {
+        setYonghwaEyeContactOpen(true);
+      }
+    }, waitMs);
+
+    return () => window.clearTimeout(timer);
+  }, [viewMode, myAction, activeModal, yonghwaEyeContactOpen, myProfile.seatZone]);
+
+  // 공연장에서 3초 이상 쉬기 상태면 정용화가 "누가 안뛰어!!!!" 외침
+  useEffect(() => {
+    if (viewMode !== 'arena' || myAction !== 'sit') {
+      return undefined;
+    }
+
+    const sitTimer = window.setTimeout(() => {
+      if (viewModeRef.current !== 'arena' || myActionRef.current !== 'sit') return;
+      showToast('🎸 정용화: "누가 안뛰어!!!!"');
+      spawnFloatingParticles('#f59e0b');
+
+      const THREE = window.THREE;
+      const yonghwa = sceneObjectsRef.current.bandMembers?.yonghwa;
+      const ud = yonghwa?.userData;
+      if (THREE && ud?.tagSprite && ud.memberName) {
+        const shoutTex = createNameTagTexture(THREE, ud.memberName, '누가 안뛰어!!!!', true);
+        if (ud.tagSprite.material.map) ud.tagSprite.material.map.dispose();
+        ud.tagSprite.material.map = shoutTex;
+        ud.tagSprite.material.needsUpdate = true;
+
+        if (yonghwaShoutTimerRef.current) {
+          window.clearTimeout(yonghwaShoutTimerRef.current);
+        }
+        yonghwaShoutTimerRef.current = window.setTimeout(() => {
+          const curThree = window.THREE;
+          const curUd = sceneObjectsRef.current.bandMembers?.yonghwa?.userData;
+          if (curThree && curUd?.tagSprite && curUd.memberName) {
+            const normalTex = createNameTagTexture(
+              curThree,
+              curUd.memberName,
+              curUd.memberRoleLabel || '',
+              true
+            );
+            if (curUd.tagSprite.material.map) curUd.tagSprite.material.map.dispose();
+            curUd.tagSprite.material.map = normalTex;
+            curUd.tagSprite.material.needsUpdate = true;
+          }
+          yonghwaShoutTimerRef.current = null;
+        }, 4500);
+      }
+    }, 3000);
+
+    return () => window.clearTimeout(sitTimer);
+  }, [viewMode, myAction, showToast, spawnFloatingParticles]);
+
+  useEffect(() => {
+    return () => {
+      if (yonghwaShoutTimerRef.current) {
+        window.clearTimeout(yonghwaShoutTimerRef.current);
+      }
+    };
+  }, []);
 
   // ============================================================================
   // 8. 메인 Three.js 3D 씬 초기화 (외부 러닝트랙 광장 + KSPO DOME 내부 좌석배치도)
@@ -2143,7 +2287,36 @@ export function App() {
         { x: 7.5, y: 1.45, z: -12.4 },
         { x: 1.5, y: 1.45, z: -11.4 },
       ];
-      const yonghwaRunnerState = { wpIdx: 2 };
+      // 돌출구역 안(FLOOR-A / FLOOR-B) 하강 순회 경로
+      const yonghwaFloorLeftPath = [
+        { x: -1.9, y: 0.24, z: -4.0 },
+        { x: -4.8, y: 0.24, z: -4.2 },
+        { x: -5.2, y: 0.24, z: -1.8 },
+        { x: -3.8, y: 0.24, z: -0.2 },
+        { x: -2.0, y: 0.24, z: -0.4 },
+        { x: -2.0, y: 0.24, z: -2.6 },
+      ];
+      const yonghwaFloorRightPath = [
+        { x: 1.9, y: 0.24, z: -4.0 },
+        { x: 4.8, y: 0.24, z: -4.2 },
+        { x: 5.2, y: 0.24, z: -1.8 },
+        { x: 3.8, y: 0.24, z: -0.2 },
+        { x: 2.0, y: 0.24, z: -0.4 },
+        { x: 2.0, y: 0.24, z: -2.6 },
+      ];
+      const yonghwaRunnerState: {
+        wpIdx: number;
+        zone: 'stage' | 'floor' | 'return_edge' | 'climb_stage';
+        floorSide: 'left' | 'right';
+        floorWpIdx: number;
+        floorEndElapsed: number;
+      } = {
+        wpIdx: 2,
+        zone: 'stage',
+        floorSide: 'right',
+        floorWpIdx: 0,
+        floorEndElapsed: 0,
+      };
 
       const jungshinStagePath = [
         { x: 8.8, y: 1.45, z: -9.6 },
@@ -2723,7 +2896,81 @@ export function App() {
           ud.rightArmPivot.rotation.x = -0.95 - Math.sin(elapsed * 14) * 0.35;
           ud.bodyGroup.position.y = 0.92 + Math.abs(Math.sin(elapsed * 7)) * 0.04;
         }
-        advanceStageRunner(memberYonghwa, yonghwaStagePath, yonghwaRunnerState, 'always_run', 0);
+
+        // 정용화: 무대 주행 중 돌출 무대 중심(인덱스 1, 19)에서 20% 확률로 돌출구역 안(FLOOR)으로 내려와 약 10초간 달린 뒤 복귀
+        if (memberYonghwa?.userData) {
+          const floorPath =
+            yonghwaRunnerState.floorSide === 'left' ? yonghwaFloorLeftPath : yonghwaFloorRightPath;
+          let targetWp = yonghwaStagePath[yonghwaRunnerState.wpIdx % yonghwaStagePath.length];
+          if (yonghwaRunnerState.zone === 'floor') {
+            targetWp = floorPath[yonghwaRunnerState.floorWpIdx % floorPath.length];
+          } else if (yonghwaRunnerState.zone === 'return_edge') {
+            targetWp = floorPath[0];
+          } else if (yonghwaRunnerState.zone === 'climb_stage') {
+            targetWp = { x: 0, y: 1.38, z: -4.0 };
+          }
+
+          const yDx = targetWp.x - memberYonghwa.position.x;
+          const yDz = targetWp.z - memberYonghwa.position.z;
+          const yDist = Math.hypot(yDx, yDz);
+          const ySpeed = yonghwaRunnerState.zone === 'stage' ? 3.4 : 3.65;
+
+          if (yDist < 0.22) {
+            if (yonghwaRunnerState.zone === 'stage') {
+              const arrivedIdx = yonghwaRunnerState.wpIdx % yonghwaStagePath.length;
+              if ((arrivedIdx === 1 || arrivedIdx === 19) && Math.random() < 0.2) {
+                yonghwaRunnerState.zone = 'floor';
+                yonghwaRunnerState.floorSide = Math.random() < 0.5 ? 'left' : 'right';
+                yonghwaRunnerState.floorWpIdx = 0;
+                yonghwaRunnerState.floorEndElapsed = elapsed + 10.0;
+                if (viewModeRef.current === 'arena') {
+                  showToast('🎸 정용화가 돌출구역 안으로 내려왔습니다!!');
+                }
+              } else {
+                yonghwaRunnerState.wpIdx = (yonghwaRunnerState.wpIdx + 1) % yonghwaStagePath.length;
+              }
+            } else if (yonghwaRunnerState.zone === 'floor') {
+              if (elapsed >= yonghwaRunnerState.floorEndElapsed) {
+                yonghwaRunnerState.zone = 'return_edge';
+              } else {
+                yonghwaRunnerState.floorWpIdx =
+                  (yonghwaRunnerState.floorWpIdx + 1) % floorPath.length;
+              }
+            } else if (yonghwaRunnerState.zone === 'return_edge') {
+              yonghwaRunnerState.zone = 'climb_stage';
+            } else if (yonghwaRunnerState.zone === 'climb_stage') {
+              yonghwaRunnerState.zone = 'stage';
+              yonghwaRunnerState.wpIdx = (yonghwaRunnerState.wpIdx + 1) % yonghwaStagePath.length;
+            }
+          } else {
+            const step = Math.min(yDist, ySpeed * dt);
+            memberYonghwa.position.x += (yDx / yDist) * step;
+            memberYonghwa.position.z += (yDz / yDist) * step;
+            memberYonghwa.position.y += (targetWp.y - memberYonghwa.position.y) * Math.min(1, dt * 10);
+
+            const targetYaw = Math.atan2(yDx, yDz);
+            let yawDiff = targetYaw - memberYonghwa.rotation.y;
+            while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+            while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+            memberYonghwa.rotation.y += yawDiff * Math.min(1, dt * 12);
+          }
+
+          const ud = memberYonghwa.userData;
+          const runCycle = elapsed * 10.5;
+          if (ud.leftLeg && ud.rightLeg) {
+            ud.leftLeg.rotation.x = Math.sin(runCycle) * 0.8;
+            ud.rightLeg.rotation.x = -Math.sin(runCycle) * 0.8;
+          }
+          if (ud.hasLightstick) {
+            ud.rightArmPivot.rotation.x = -2.25 + Math.sin(runCycle * 0.65) * 0.28;
+            ud.rightArmPivot.rotation.z = -0.18 + Math.cos(runCycle * 0.65) * 0.1;
+          } else {
+            ud.rightArmPivot.rotation.x = -0.95 + Math.sin(runCycle) * 0.3;
+          }
+          ud.bodyGroup.rotation.x = 0.14;
+          ud.charGroup.position.y = Math.abs(Math.sin(runCycle)) * 0.13;
+        }
+
         advanceStageRunner(memberJungshin, jungshinStagePath, jungshinRunnerState, 'walk_run_cycle', 1.4);
 
         // 4. 「그러나, 꽃이었다」 응원 꽃밭 3D 오브젝트 동기화 (추가/수정/삭제 실시간 반영)
@@ -3122,7 +3369,7 @@ export function App() {
       isTrackRunningRef.current = false;
       myActionRef.current = 'idle';
       setMyAction('idle');
-      showToast('⏸️ 트랙 달리기를 잠시 멈췄습니다.');
+      showToast('⏸️ 트랙 달리기를 멈췄습니다.');
       return;
     }
 
@@ -3135,9 +3382,7 @@ export function App() {
     myActionRef.current = 'run';
     setMyAction('run');
     spawnFloatingParticles('#38bdf8');
-    showToast(
-      `🏃‍♂️ ${currentRoomId}레인 블루 트랙을 따라 힘차게 달립니다! (한 번 더 누르면 정지)`
-    );
+    showToast(`🏃‍♂️ ${currentRoomId}레인 트랙을 힘차게 달립니다!`);
   };
 
   const currentAdventObj =
@@ -3192,19 +3437,20 @@ export function App() {
         )}
 
         {/* 상단 HUD 헤더 */}
-        <header className="absolute top-0 left-0 right-0 z-20 p-2.5 sm:p-4 flex flex-wrap items-start justify-between gap-1.5 sm:gap-2 pointer-events-none">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
-            <div className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-blue-400/30 shadow-xl flex items-center gap-2 sm:gap-2.5">
-              <div className="w-16 h-8 sm:w-[88px] sm:h-10 rounded-xl overflow-hidden bg-[#eae9e4] border border-white/25 flex items-center justify-center shadow-inner shrink-0">
+        <header className="absolute top-0 left-0 right-0 z-20 p-2.5 sm:p-4 flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
+          {/* 1줄: 로고/타이틀 + 스피커 + 톱니바퀴(환경설정) */}
+          <div className="w-full flex items-center justify-between gap-1.5 sm:gap-2 pointer-events-auto">
+            <div className="px-2 py-1 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-blue-400/30 shadow-xl flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+              <div className="w-12 h-7 sm:w-[88px] sm:h-10 rounded-xl overflow-hidden bg-[#eae9e4] border border-white/25 flex items-center justify-center shadow-inner shrink-0">
                 <img
                   src="./assets/aistudio/_____2026-11-25_161517_dc269b5c.png"
                   alt="EBDD"
-                  className="h-[60px] sm:h-[82px] w-auto max-w-none -rotate-90 object-contain shrink-0"
+                  className="h-[46px] sm:h-[82px] w-auto max-w-none -rotate-90 object-contain shrink-0"
                 />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] sm:text-sm font-bold tracking-tight text-white whitespace-nowrap">
+                <div className="flex items-center gap-1 sm:gap-1.5">
+                  <span className="text-[11px] sm:text-sm font-bold tracking-tight text-white whitespace-nowrap truncate">
                     {t.headerTitle}
                   </span>
                   <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-md bg-blue-600 text-white whitespace-nowrap shrink-0">
@@ -3220,9 +3466,40 @@ export function App() {
               </div>
             </div>
 
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={toggleAudio}
+                title={isPlayingAudio ? t.bgmStop : t.bgmPlay}
+                aria-label={isPlayingAudio ? t.bgmStop : t.bgmPlay}
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl backdrop-blur-md border flex items-center justify-center shadow-lg transition active:scale-95 shrink-0 ${
+                  isPlayingAudio
+                    ? 'bg-blue-600/90 border-sky-300/60 text-white'
+                    : 'bg-slate-900/80 border-white/15 text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                {isPlayingAudio ? (
+                  <Volume2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <VolumeX className="w-4 h-4 shrink-0" />
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveModal('settings')}
+                title={t.settingsBtn}
+                aria-label={t.settingsBtn}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-white flex items-center justify-center shadow-lg transition active:scale-95 shrink-0"
+              >
+                <Settings className="w-4 h-4 text-sky-400 shrink-0" />
+              </button>
+            </div>
+          </div>
+
+          {/* 2줄: 공연장 입장(또는 광장으로 나가기) + 좌석배치도 */}
+          <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
             <button
               onClick={() => switchViewMode(viewMode === 'plaza' ? 'arena' : 'plaza')}
-              className={`px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
+              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl backdrop-blur-md border text-[11px] sm:text-xs font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap ${
                 viewMode === 'arena'
                   ? 'bg-emerald-600/95 border-emerald-300/60 text-white hover:bg-emerald-500'
                   : 'bg-indigo-600/90 border-indigo-300/50 text-white hover:bg-indigo-500'
@@ -3243,88 +3520,107 @@ export function App() {
 
             <button
               onClick={() => setActiveModal('seatmap')}
-              className="px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/45 text-[11px] sm:text-xs font-extrabold text-sky-200 flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/45 text-[11px] sm:text-xs font-extrabold text-sky-200 flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap"
             >
               <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400 shrink-0" />
               <span>{t.seatMapBtn}</span>
             </button>
           </div>
-
-          <div className="flex items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
-            <button
-              onClick={toggleAudio}
-              title={isPlayingAudio ? t.bgmStop : t.bgmPlay}
-              className={`p-2 sm:px-3 sm:py-2 rounded-2xl backdrop-blur-md border text-xs font-extrabold flex items-center gap-1.5 shadow-lg transition active:scale-95 ${
-                isPlayingAudio
-                  ? 'bg-blue-600/90 border-sky-300/60 text-white'
-                  : 'bg-slate-900/80 border-white/15 text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              {isPlayingAudio ? <Volume2 className="w-4 h-4 shrink-0" /> : <VolumeX className="w-4 h-4 shrink-0" />}
-              <span className="hidden sm:inline whitespace-nowrap">BGM</span>
-            </button>
-
-            <button
-              onClick={() => setActiveModal('settings')}
-              title={t.settingsBtn}
-              className="px-2.5 py-2 sm:px-3.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-[11px] sm:text-xs font-extrabold text-white flex items-center gap-1.5 shadow-lg transition active:scale-95 whitespace-nowrap"
-            >
-              <Settings className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>{t.settingsBtn}</span>
-            </button>
-          </div>
         </header>
 
-        {/* 상단 토스트 알림 배너 */}
+        {/* 상단 토스트 알림 배너 (단어 잘림 없이 한 줄 우선 표시) */}
         {toastMsg && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2.5 rounded-2xl bg-slate-900/95 border border-sky-400/50 text-xs sm:text-sm font-bold text-sky-100 shadow-2xl backdrop-blur-md max-w-[92vw] text-center pointer-events-none">
+          <div className="fixed top-24 sm:top-28 left-1/2 -translate-x-1/2 z-40 w-max max-w-[92vw] px-3.5 py-2 rounded-2xl bg-slate-900/95 border border-sky-400/50 text-[11px] sm:text-sm font-bold text-sky-100 leading-snug shadow-2xl backdrop-blur-md text-center [word-break:keep-all] [overflow-wrap:break-word] pointer-events-none">
             {toastMsg}
           </div>
         )}
 
-        {/* 우측 퀵 메뉴 도크 */}
-        <aside className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 pointer-events-auto">
-          <button
-            onClick={() => setActiveModal('advent')}
-            className="px-3 py-2.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-amber-400/40 text-xs font-extrabold text-amber-200 flex items-center gap-2 shadow-xl transition active:scale-95"
-          >
-            <Calendar className="w-4 h-4 text-amber-300 shrink-0" />
-            <span className="hidden sm:inline">{t.dockAdvent}</span>
-            <span className="px-1.5 py-0.5 rounded-md bg-amber-400/20 text-[10px] text-amber-300">
-              {checkedDates.length}
-            </span>
-          </button>
+        {/* 우측 퀵 메뉴 도크 (광장에서만 표시) */}
+        {viewMode === 'plaza' && (
+          <aside className="absolute right-2.5 sm:right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-end gap-2 pointer-events-auto">
+            <button
+              onClick={() => setActiveModal('advent')}
+              title={t.dockAdvent}
+              aria-label={t.dockAdvent}
+              className="px-2.5 py-2.5 sm:px-3 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-amber-400/40 text-xs font-extrabold text-amber-200 flex items-center gap-1.5 sm:gap-2 shadow-xl transition active:scale-95 whitespace-nowrap"
+            >
+              <Calendar className="w-4 h-4 text-amber-300 shrink-0" />
+              <span className="hidden sm:inline">{t.dockAdvent}</span>
+              <span className="px-1.5 py-0.5 rounded-md bg-amber-400/20 text-[10px] text-amber-300">
+                {checkedDates.length}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveModal('memos')}
-            className="px-3 py-2.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-pink-400/40 text-xs font-extrabold text-pink-200 flex items-center gap-2 shadow-xl transition active:scale-95"
-          >
-            <FlowerBloomIcon className="w-4 h-4 text-pink-400 shrink-0" />
-            <span className="hidden sm:inline">{t.dockFlowers}</span>
-            <span className="px-1.5 py-0.5 rounded-md bg-pink-400/20 text-[10px] text-pink-300">
-              {memos.length}
-            </span>
-          </button>
+            <button
+              onClick={() => setActiveModal('memos')}
+              title={t.dockFlowers}
+              aria-label={t.dockFlowers}
+              className="px-2.5 py-2.5 sm:px-3 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-pink-400/40 text-xs font-extrabold text-pink-200 flex items-center gap-1.5 sm:gap-2 shadow-xl transition active:scale-95 whitespace-nowrap"
+            >
+              <FlowerBloomIcon className="w-4 h-4 text-pink-400 shrink-0" />
+              <span className="hidden sm:inline">{t.dockFlowers}</span>
+              <span className="px-1.5 py-0.5 rounded-md bg-pink-400/20 text-[10px] text-pink-300">
+                {memos.length}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveModal('room')}
-            className="px-3 py-2.5 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-xs font-extrabold text-sky-200 flex items-center gap-2 shadow-xl transition active:scale-95"
-          >
-            <Users className="w-4 h-4 text-sky-400 shrink-0" />
-            <span className="hidden sm:inline">{t.dockLane(currentRoomId)}</span>
-            <span className="px-1.5 py-0.5 rounded-md bg-sky-400/20 text-[10px] text-sky-300">
-              {currentRoomCapacity}/{MAX_ROOM_CAPACITY}
-            </span>
-          </button>
+            <button
+              onClick={() => setActiveModal('room')}
+              title={t.dockLane(currentRoomId)}
+              aria-label={t.dockLane(currentRoomId)}
+              className="px-2.5 py-2.5 sm:px-3 rounded-2xl bg-slate-900/85 hover:bg-slate-800 backdrop-blur-md border border-sky-400/40 text-xs font-extrabold text-sky-200 flex items-center gap-1.5 sm:gap-2 shadow-xl transition active:scale-95 whitespace-nowrap"
+            >
+              <Users className="w-4 h-4 text-sky-400 shrink-0" />
+              <span className="hidden sm:inline">{t.dockLane(currentRoomId)}</span>
+              <span className="px-1.5 py-0.5 rounded-md bg-sky-400/20 text-[10px] text-sky-300">
+                {currentRoomCapacity}/{MAX_ROOM_CAPACITY}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveModal('minigames')}
-            className="px-3 py-2.5 rounded-2xl bg-gradient-to-br from-blue-600/90 to-indigo-600/90 hover:from-blue-500 hover:to-indigo-500 backdrop-blur-md border border-sky-300/50 text-xs font-extrabold text-white flex items-center gap-2 shadow-xl transition active:scale-95"
-          >
-            <Gamepad2 className="w-4 h-4 text-amber-300 shrink-0" />
-            <span className="hidden sm:inline">{t.dockMiniGames}</span>
-          </button>
-        </aside>
+            <button
+              onClick={() => setActiveModal('minigames')}
+              title={t.dockMiniGames}
+              aria-label={t.dockMiniGames}
+              className="px-2.5 py-2.5 sm:px-3 rounded-2xl bg-gradient-to-br from-blue-600/90 to-indigo-600/90 hover:from-blue-500 hover:to-indigo-500 backdrop-blur-md border border-sky-300/50 text-xs font-extrabold text-white flex items-center gap-1.5 sm:gap-2 shadow-xl transition active:scale-95 whitespace-nowrap"
+            >
+              <Gamepad2 className="w-4 h-4 text-amber-300 shrink-0" />
+              <span className="hidden sm:inline">{t.dockMiniGames}</span>
+            </button>
+          </aside>
+        )}
+
+        {/* 공연장 정용화 눈맞춤 소형 팝업 */}
+        {viewMode === 'arena' && yonghwaEyeContactOpen && (
+          <div className="fixed bottom-32 sm:bottom-36 left-1/2 -translate-x-1/2 z-30 w-[min(88vw,300px)] p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-amber-400/55 shadow-2xl pointer-events-auto text-center [word-break:keep-all]">
+            <p className="text-xs sm:text-sm font-extrabold text-amber-200 leading-snug">
+              {t.yonghwaEyeTitle}
+            </p>
+            <p className="text-xs font-bold text-white mt-0.5">{t.yonghwaEyeQuestion}</p>
+            <div className="mt-2.5 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  eyeContactCooldownUntilRef.current = Date.now() + 25000;
+                  setYonghwaEyeContactOpen(false);
+                  triggerAction('cheer', '🔥 에바뛰!!!!!!!');
+                }}
+                className="flex-1 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition active:scale-95"
+              >
+                {t.yonghwaEyeYes}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  eyeContactCooldownUntilRef.current = Date.now() + 25000;
+                  setYonghwaEyeContactOpen(false);
+                }}
+                className="flex-1 py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/15 text-slate-200 text-xs font-bold transition active:scale-95"
+              >
+                {t.yonghwaEyeNo}
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* 선택한 다른 보이스 팬 프로필 팝업 카드 */}
       {selectedPeer && (
@@ -3388,7 +3684,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    triggerAction('cheer', '🔥 에브리바디 뛰어!! 에바뛰 점프!!');
+                    triggerAction('cheer', '🔥 에바뛰!!!!!!!');
                     setActionMenuOpen(false);
                   }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition text-left ${
@@ -3409,7 +3705,7 @@ export function App() {
                     triggerAction(
                       'wave',
                       holdingSlogan
-                        ? '💙 양손으로 CNBLUE 슬로건을 높이 들어 흔듭니다!'
+                        ? '💙 CNBLUE 슬로건을 흔듭니다!'
                         : '💎 뛰봉을 힘차게 흔듭니다!'
                     );
                     setActionMenuOpen(false);
@@ -3431,7 +3727,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    triggerAction('greet', '🙇‍♂️ 주변 보이스 팬들에게 반갑게 인사합니다!');
+                    triggerAction('greet', '🙇‍♂️ 보이스들에게 반갑게 인사합니다!');
                     setActionMenuOpen(false);
                   }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition text-left ${

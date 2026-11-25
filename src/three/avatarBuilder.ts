@@ -1004,6 +1004,9 @@ export function buildBandMemberMesh(
     leftArmPivot,
     rightArmPivot,
     spotRing,
+    tagSprite,
+    memberName: member.name,
+    memberRoleLabel: member.roleLabel,
     hasLightstick: member.id === 'yonghwa',
   };
   return root;
