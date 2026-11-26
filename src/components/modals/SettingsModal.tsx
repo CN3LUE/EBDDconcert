@@ -159,7 +159,7 @@ export function SettingsModal({
                   ? isAdminMode
                     ? t.settingsAdminActiveDesc
                     : t.settingsAdminOffDesc
-                  : '정비중'}
+                  : t.settingsAdminMaintenanceDesc}
               </p>
             </div>
 
@@ -192,9 +192,9 @@ export function SettingsModal({
               <button
                 type="button"
                 onClick={onAdminSignIn}
-                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-xs font-extrabold text-amber-200 shrink-0 whitespace-nowrap transition active:scale-95"
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-slate-400 shrink-0 whitespace-nowrap transition"
               >
-                {t.settingsAdminSignInBtn}
+                {t.settingsAdminMaintenanceBtn}
               </button>
             )}
           </div>

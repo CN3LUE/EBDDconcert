@@ -143,7 +143,8 @@ export interface TranslationDict {
   adventLockedCardDesc: (y: number, m: number, d: number, dDay: number) => string;
   adminModeBadge: string;
   settingsAdminLabel: string;
-  settingsAdminSignInBtn: string;
+  settingsAdminMaintenanceDesc: string;
+  settingsAdminMaintenanceBtn: string;
   settingsAdminActiveDesc: string;
   settingsAdminOffDesc: string;
   settingsAdminToggleOn: string;
@@ -338,8 +339,9 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventLockedCardDesc: (y, m, d, dDay) =>
       `${y}년 ${m}월 ${d}일 (D-${dDay}) 00:00 KST가 되면 오늘의 질문과 아이템 보상이 열립니다! 조금만 기다려 주세요 💙`,
     adminModeBadge: '👑 관리자 모드',
-    settingsAdminLabel: '관리자 모드 (Admin)',
-    settingsAdminSignInBtn: 'Google 관리자 로그인',
+    settingsAdminLabel: '관리자 모드',
+    settingsAdminMaintenanceDesc: '현재 시스템 정비 중입니다.',
+    settingsAdminMaintenanceBtn: '정비 중',
     settingsAdminActiveDesc: '모든 어드벤트 질문(88일) & 착용 MD 아이템이 열려 있습니다.',
     settingsAdminOffDesc: '일반 팬 화면으로 미리보기 중입니다.',
     settingsAdminToggleOn: '관리자 ON',
@@ -400,6 +402,7 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
       `🔒 어드벤트 ${day}회차 질문에 답변하면 [${colorName}] 뛰봉 컬러가 열립니다!`,
     profileColorNames: {
       '#2563eb': '로열 블루',
+      '#ef4444': '레드',
       '#38bdf8': '스카이 시안',
       '#e0f2fe': '아이스 화이트',
       '#fbbf24': '선셋 골드',
@@ -554,7 +557,8 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
       `This day's question and reward will unlock on ${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')} (D-${dDay}) at 00:00 KST. Stay tuned! 💙`,
     adminModeBadge: '👑 Admin Mode',
     settingsAdminLabel: 'Admin Mode',
-    settingsAdminSignInBtn: 'Admin Google Sign-In',
+    settingsAdminMaintenanceDesc: 'Currently under maintenance.',
+    settingsAdminMaintenanceBtn: 'Maintenance',
     settingsAdminActiveDesc: 'All 88 Advent questions & MD items are unlocked.',
     settingsAdminOffDesc: 'Previewing as a regular fan.',
     settingsAdminToggleOn: 'Admin ON',
@@ -615,6 +619,7 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
       `🔒 Answer #${day} Advent question to unlock [${colorName}] Ttuibong glow!`,
     profileColorNames: {
       '#2563eb': 'Royal Blue',
+      '#ef4444': 'Red',
       '#38bdf8': 'Sky Cyan',
       '#e0f2fe': 'Ice White',
       '#fbbf24': 'Sunset Gold',
@@ -765,8 +770,9 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventLockedCardDesc: (y, m, d, dDay) =>
       `${y}年${m}月${d}日 (D-${dDay}) 00:00 KST 将开放今日提问与道具奖励，敬请期待！💙`,
     adminModeBadge: '👑 管理员模式',
-    settingsAdminLabel: '管理员模式 (Admin)',
-    settingsAdminSignInBtn: 'Google 管理员登录',
+    settingsAdminLabel: '管理员模式',
+    settingsAdminMaintenanceDesc: '当前系统维护中。',
+    settingsAdminMaintenanceBtn: '维护中',
     settingsAdminActiveDesc: '已解锁全部 88 天提问与所有周边装扮道具。',
     settingsAdminOffDesc: '当前正在预览普通粉丝视图。',
     settingsAdminToggleOn: '管理员 ON',
@@ -825,6 +831,7 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
       `🔒 回答第${day}次倒数日历提问即可解锁 [${colorName}] 跳棒灯光！`,
     profileColorNames: {
       '#2563eb': '皇家蓝',
+      '#ef4444': '炽焰红',
       '#38bdf8': '天空青',
       '#e0f2fe': '冰晶白',
       '#fbbf24': '落日金',
@@ -978,8 +985,9 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     adventLockedCardDesc: (y, m, d, dDay) =>
       `${y}年${m}月${d}日 (D-${dDay}) 00:00 KST に質問と報酬が解放されます。もうしばらくお待ちください！💙`,
     adminModeBadge: '👑 管理者モード',
-    settingsAdminLabel: '管理者モード (Admin)',
-    settingsAdminSignInBtn: 'Google 管理者ログイン',
+    settingsAdminLabel: '管理者モード',
+    settingsAdminMaintenanceDesc: '現在システムメンテナンス中です。',
+    settingsAdminMaintenanceBtn: 'メンテナンス中',
     settingsAdminActiveDesc: '全88日分の質問とすべてのMDアイテムが解放されています。',
     settingsAdminOffDesc: '一般ファン画面をプレビュー中です。',
     settingsAdminToggleOn: '管理者 ON',
@@ -1040,6 +1048,7 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
       `🔒 アドベント${day}回目の質問に答えると [${colorName}] カラーが解放されます！`,
     profileColorNames: {
       '#2563eb': 'ロイヤルブルー',
+      '#ef4444': 'レッド',
       '#38bdf8': 'スカイシアン',
       '#e0f2fe': 'アイスホワイト',
       '#fbbf24': 'サンセットゴールド',

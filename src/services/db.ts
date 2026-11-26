@@ -152,6 +152,85 @@ export function saveLocalUserState(payload: CloudUserPayload): void {
   }
 }
 
+const FLOWER_MEMOS_CACHE_KEY = 'kspo_plaza_flower_memos_v1';
+
+export function formatRelativeMemoTime(
+  createdAtMs?: number,
+  fallbackLabel = '방금 전',
+  lang: 'ko' | 'en' | 'zh' | 'ja' = 'ko'
+): string {
+  if (typeof createdAtMs !== 'number' || !Number.isFinite(createdAtMs) || createdAtMs <= 0) {
+    return fallbackLabel;
+  }
+  const diffSec = Math.max(0, Math.floor((Date.now() - createdAtMs) / 1000));
+  if (diffSec < 60) {
+    if (lang === 'en') return 'Just now';
+    if (lang === 'zh') return '刚刚';
+    if (lang === 'ja') return 'たった今';
+    return '방금 전';
+  }
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    if (lang === 'en') return `${diffMin}m ago`;
+    if (lang === 'zh') return `${diffMin}分钟前`;
+    if (lang === 'ja') return `${diffMin}分前`;
+    return `${diffMin}분 전`;
+  }
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) {
+    if (lang === 'en') return `${diffHour}h ago`;
+    if (lang === 'zh') return `${diffHour}小时前`;
+    if (lang === 'ja') return `${diffHour}時間前`;
+    return `${diffHour}시간 전`;
+  }
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 30) {
+    if (lang === 'en') return `${diffDay}d ago`;
+    if (lang === 'zh') return `${diffDay}天前`;
+    if (lang === 'ja') return `${diffDay}日前`;
+    return `${diffDay}일 전`;
+  }
+  const diffMonth = Math.floor(diffDay / 30);
+  if (diffMonth < 12) {
+    if (lang === 'en') return `${diffMonth}mo ago`;
+    if (lang === 'zh') return `${diffMonth}个月前`;
+    if (lang === 'ja') return `${diffMonth}か月前`;
+    return `${diffMonth}개월 전`;
+  }
+  const diffYear = Math.floor(diffDay / 365);
+  if (lang === 'en') return `${diffYear}y ago`;
+  if (lang === 'zh') return `${diffYear}年前`;
+  if (lang === 'ja') return `${diffYear}年前`;
+  return `${diffYear}년 전`;
+}
+
+export function loadCachedFlowerMemos(): PlazaMemo[] | null {
+  try {
+    const raw = window.localStorage.getItem(FLOWER_MEMOS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const valid = parsed.filter(
+      (item): item is PlazaMemo =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        typeof (item as PlazaMemo).id === 'string' &&
+        typeof (item as PlazaMemo).text === 'string'
+    );
+    return valid.length > 0 ? valid : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCachedFlowerMemos(memos: PlazaMemo[]): void {
+  try {
+    window.localStorage.setItem(FLOWER_MEMOS_CACHE_KEY, JSON.stringify(memos.slice(0, 300)));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
 function sanitizeHexColor(hex: string, fallback = '#2563eb'): string {
   return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : fallback;
 }
@@ -389,6 +468,23 @@ export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): ()
       snap.forEach((d) => {
         const v = d.data() as Record<string, unknown>;
         if (v && typeof v.text === 'string') {
+          const ts = v.createdAt as
+            | { toMillis?: () => number; seconds?: number }
+            | number
+            | undefined;
+          const createdAtMs =
+            typeof ts === 'number'
+              ? ts
+              : ts && typeof ts.toMillis === 'function'
+              ? ts.toMillis()
+              : ts && typeof ts.seconds === 'number'
+              ? ts.seconds * 1000
+              : d.metadata.hasPendingWrites
+              ? Date.now()
+              : undefined;
+          const fallbackLabel =
+            typeof v.createdAtLabel === 'string' ? v.createdAtLabel : '방금 전';
+
           cloudMemos.push({
             id: d.id,
             authorId: typeof v.authorId === 'string' ? v.authorId : undefined,
@@ -400,12 +496,17 @@ export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): ()
             z: typeof v.z === 'number' ? v.z : 12,
             likes: typeof v.likes === 'number' ? v.likes : 1,
             likedByMe: false,
-            createdAt: typeof v.createdAtLabel === 'string' ? v.createdAtLabel : '방금 전',
+            createdAt: formatRelativeMemoTime(createdAtMs, fallbackLabel),
+            createdAtMs,
           });
         }
       });
-      cloudMemos.sort((a, b) => b.id.localeCompare(a.id));
-      onUpdate([...cloudMemos, ...INITIAL_MEMOS]);
+      cloudMemos.sort(
+        (a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || b.id.localeCompare(a.id)
+      );
+      const merged = [...cloudMemos, ...INITIAL_MEMOS];
+      saveCachedFlowerMemos(merged);
+      onUpdate(merged);
     },
     (err) => {
       try {

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Heart, Pencil, Trash2, X } from 'lucide-react';
 import { FLOWER_COLORS } from '../../constants/plazaData';
 import { useI18n } from '../../i18n/LanguageContext';
+import { formatRelativeMemoTime } from '../../services/db';
 import { FlowerBloomIcon } from '../AvatarPreview3D';
 import type { PlazaMemo } from '../../types/plaza';
 
@@ -34,11 +35,17 @@ export function FlowerMemosModal({
   onMoveToMemo: (memo: PlazaMemo) => void;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [editColor, setEditColor] = useState<string>(FLOWER_COLORS[6].hex);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [, setTimeTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setTimeTick((n) => n + 1), 30000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const startEdit = (memo: PlazaMemo) => {
     setEditingId(memo.id);
@@ -155,7 +162,9 @@ export function FlowerMemosModal({
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[10px] text-slate-400">{memo.createdAt}</span>
+                    <span className="text-[10px] text-slate-400">
+                      {formatRelativeMemoTime(memo.createdAtMs, memo.createdAt, lang)}
+                    </span>
                     {isMine && !isEditing && (
                       <>
                         <button

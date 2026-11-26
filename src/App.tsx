@@ -56,7 +56,9 @@ import {
   addPublicFlowerMemo,
   deletePublicFlowerMemo,
   initFirebaseAuth,
+  loadCachedFlowerMemos,
   loadLocalUserState,
+  saveCachedFlowerMemos,
   saveLocalUserState,
   saveUserCloudState,
   signInWithGoogle,
@@ -199,7 +201,7 @@ export function App() {
             }
             showToast('👑 관리자 계정 인증 완료! 모든 질문과 아이템을 볼 수 있습니다.');
           } else if (fromAdminPrompt) {
-            showToast('⚠️ 관리자 계정(hyoleen@penz.kr)으로 로그인해야 관리자 모드가 열립니다.');
+            showToast('⚠️ 현재 관리자 기능 정비 중입니다.');
           } else {
             showToast('☁️ Google 계정으로 클라우드 동기화가 연결되었습니다!');
           }
@@ -208,7 +210,12 @@ export function App() {
           console.error('Google sign-in error:', err);
           const code = (err as { code?: string })?.code || '';
           if (code === 'auth/unauthorized-domain') {
-            showToast('현재 도메인이 Firebase 승인 도메인에 등록되지 않았습니다.');
+            const host = typeof window !== 'undefined' ? window.location.hostname : '';
+            showToast(
+              host
+                ? `도메인(${host})이 Firebase 승인 도메인에 등록되지 않았습니다.`
+                : '현재 도메인이 Firebase 승인 도메인에 등록되지 않았습니다.'
+            );
           } else {
             showToast('로그인 창이 닫혔거나 팝업이 차단되었습니다.');
           }
@@ -298,7 +305,13 @@ export function App() {
   const [selectedPeer, setSelectedPeer] = useState<FanPeer | null>(null);
 
   // --- 「그러나, 꽃이었다」 메모 ---
-  const [memos, setMemos] = useState<PlazaMemo[]>(INITIAL_MEMOS);
+  const cachedMemosRef = useRef<PlazaMemo[] | null>(loadCachedFlowerMemos());
+  const [memos, setMemos] = useState<PlazaMemo[]>(
+    () => cachedMemosRef.current ?? INITIAL_MEMOS
+  );
+  const [memosReady, setMemosReady] = useState<boolean>(
+    () => cachedMemosRef.current !== null
+  );
   const memosRef = useRef<PlazaMemo[]>(memos);
   useEffect(() => {
     memosRef.current = memos;
@@ -377,7 +390,10 @@ export function App() {
     );
 
     const unsubAdventPublic = subscribePublicAdventAnswers(setPublicAdventAnswers);
-    const unsubMemos = subscribeFlowerMemos(setMemos);
+    const unsubMemos = subscribeFlowerMemos((nextMemos) => {
+      setMemos(nextMemos);
+      setMemosReady(true);
+    });
 
     return () => {
       unsubUser();
@@ -3221,8 +3237,9 @@ export function App() {
         ? myPosRef.current.z + (Math.random() - 0.5) * 1.2
         : TRACK_CENTER_Z + (Math.random() - 0.5) * 14;
 
+    const nowMs = Date.now();
     const writerId = user?.uid || localWriterIdRef.current;
-    const localId = `flower-${Date.now()}`;
+    const localId = `flower-${nowMs}`;
     const created: PlazaMemo = {
       id: localId,
       authorId: writerId,
@@ -3235,9 +3252,15 @@ export function App() {
       likes: 1,
       likedByMe: true,
       createdAt: '방금 전',
+      createdAtMs: nowMs,
     };
 
-    setMemos((prev) => [created, ...prev]);
+    setMemos((prev) => {
+      const next = [created, ...prev];
+      saveCachedFlowerMemos(next);
+      return next;
+    });
+    setMemosReady(true);
     setNewMemoText('');
     setSelectedMemo(created);
     spawnFloatingParticles(newMemoColor);
@@ -3632,7 +3655,7 @@ export function App() {
               <FlowerBloomIcon className="w-4 h-4 text-pink-400 shrink-0" />
               <span className="hidden sm:inline">{t.dockFlowers}</span>
               <span className="px-1.5 py-0.5 rounded-md bg-pink-400/20 text-[10px] text-pink-300">
-                {memos.length}
+                {memosReady ? memos.length : '···'}
               </span>
             </button>
 

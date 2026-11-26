@@ -68,6 +68,7 @@ export interface PlazaMemo {
   likes: number;
   likedByMe: boolean;
   createdAt: string;
+  createdAtMs?: number;
 }
 
 export interface SeatSectionInfo {
