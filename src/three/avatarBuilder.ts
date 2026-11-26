@@ -553,17 +553,19 @@ export function buildBandMemberMesh(
     name: string;
     roleLabel: string;
     quote: string;
-  }
+  },
+  options?: { plazaRunner?: boolean }
 ) {
+  const isPlazaRunner = Boolean(options?.plazaRunner);
   const root = new THREE.Group();
 
   const spotRing = new THREE.Mesh(
     new THREE.RingGeometry(0.65, 1.05, 32),
     new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
+      color: isPlazaRunner ? 0xfacc15 : 0x38bdf8,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.55,
+      opacity: isPlazaRunner ? 0.72 : 0.55,
     })
   );
   spotRing.rotation.x = -Math.PI / 2;
@@ -795,26 +797,39 @@ export function buildBandMemberMesh(
   charGroup.add(bodyGroup);
 
   if (member.id === 'minhyuk') {
-    charGroup.position.set(0, -0.14, -0.38);
-    leftLeg.rotation.x = -0.85;
-    rightLeg.rotation.x = -0.85;
-    leftArmPivot.rotation.x = -0.95;
-    leftArmPivot.rotation.z = -0.25;
-    rightArmPivot.rotation.x = -0.95;
-    rightArmPivot.rotation.z = 0.25;
+    if (isPlazaRunner) {
+      const stickMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.4 });
+      const stickL = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.46, 8), stickMat);
+      stickL.position.set(0.04, -0.42, 0.22);
+      stickL.rotation.x = Math.PI * 0.42;
+      leftArmPivot.add(stickL);
 
-    const stickMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.4 });
-    const stickL = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.46, 8), stickMat);
-    stickL.position.set(0.05, -0.42, 0.26);
-    stickL.rotation.x = Math.PI * 0.42;
-    leftArmPivot.add(stickL);
+      const stickR = stickL.clone();
+      stickR.position.x = -0.04;
+      rightArmPivot.add(stickR);
+      leftArmPivot.rotation.x = -0.8;
+      rightArmPivot.rotation.x = -1.6;
+    } else {
+      charGroup.position.set(0, -0.14, -0.38);
+      leftLeg.rotation.x = -0.85;
+      rightLeg.rotation.x = -0.85;
+      leftArmPivot.rotation.x = -0.95;
+      leftArmPivot.rotation.z = -0.25;
+      rightArmPivot.rotation.x = -0.95;
+      rightArmPivot.rotation.z = 0.25;
 
-    const stickR = stickL.clone();
-    stickR.position.x = -0.05;
-    rightArmPivot.add(stickR);
+      const stickMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.4 });
+      const stickL = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.46, 8), stickMat);
+      stickL.position.set(0.05, -0.42, 0.26);
+      stickL.rotation.x = Math.PI * 0.42;
+      leftArmPivot.add(stickL);
 
-    const drumKit = new THREE.Group();
-    drumKit.position.set(0, 0, 0.58);
+      const stickR = stickL.clone();
+      stickR.position.x = -0.05;
+      rightArmPivot.add(stickR);
+
+      const drumKit = new THREE.Group();
+      drumKit.position.set(0, 0, 0.58);
 
     const chromeMat = new THREE.MeshStandardMaterial({
       color: 0xe2e8f0,
@@ -904,59 +919,62 @@ export function buildBandMemberMesh(
       drumKit.add(stand, disc);
     });
 
-    root.add(drumKit);
+      root.add(drumKit);
+    }
   } else {
-    const isBass = member.id === 'jungshin';
-    const instrumentGroup = new THREE.Group();
-    instrumentGroup.position.set(0.04, -0.16, 0.45);
-    instrumentGroup.rotation.z = isBass ? 0.36 : 0.32;
-    instrumentGroup.rotation.y = -0.12;
+    if (!isPlazaRunner) {
+      const isBass = member.id === 'jungshin';
+      const instrumentGroup = new THREE.Group();
+      instrumentGroup.position.set(0.04, -0.16, 0.45);
+      instrumentGroup.rotation.z = isBass ? 0.36 : 0.32;
+      instrumentGroup.rotation.y = -0.12;
 
-    const guitarBody = new THREE.Mesh(
-      new THREE.BoxGeometry(isBass ? 0.56 : 0.52, isBass ? 0.74 : 0.66, 0.11),
-      new THREE.MeshStandardMaterial({
-        color: isBass ? 0x1e3a8a : 0xdc2626,
-        emissive: isBass ? 0x000000 : 0x450a0a,
-        emissiveIntensity: isBass ? 0 : 0.35,
-        metalness: 0.38,
-        roughness: 0.22,
-      })
-    );
-    const pickguard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.42, 0.125),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
-    );
-    pickguard.position.set(0.05, -0.04, 0);
-    instrumentGroup.add(guitarBody, pickguard);
+      const guitarBody = new THREE.Mesh(
+        new THREE.BoxGeometry(isBass ? 0.56 : 0.52, isBass ? 0.74 : 0.66, 0.11),
+        new THREE.MeshStandardMaterial({
+          color: isBass ? 0x1e3a8a : 0xdc2626,
+          emissive: isBass ? 0x000000 : 0x450a0a,
+          emissiveIntensity: isBass ? 0 : 0.35,
+          metalness: 0.38,
+          roughness: 0.22,
+        })
+      );
+      const pickguard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.42, 0.125),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
+      );
+      pickguard.position.set(0.05, -0.04, 0);
+      instrumentGroup.add(guitarBody, pickguard);
 
-    const neckLen = isBass ? 1.18 : 0.92;
-    const neck = new THREE.Mesh(
-      new THREE.BoxGeometry(0.11, neckLen, 0.07),
-      new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 })
-    );
-    neck.position.set(0, 0.3 + neckLen / 2, 0.01);
-    instrumentGroup.add(neck);
+      const neckLen = isBass ? 1.18 : 0.92;
+      const neck = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, neckLen, 0.07),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 })
+      );
+      neck.position.set(0, 0.3 + neckLen / 2, 0.01);
+      instrumentGroup.add(neck);
 
-    const headstock = new THREE.Mesh(
-      new THREE.BoxGeometry(0.17, 0.24, 0.07),
-      new THREE.MeshStandardMaterial({ color: isBass ? 0x1e3a8a : 0xdc2626, roughness: 0.28 })
-    );
-    headstock.position.set(-0.02, 0.3 + neckLen + 0.1, 0.01);
-    instrumentGroup.add(headstock);
+      const headstock = new THREE.Mesh(
+        new THREE.BoxGeometry(0.17, 0.24, 0.07),
+        new THREE.MeshStandardMaterial({ color: isBass ? 0x1e3a8a : 0xdc2626, roughness: 0.28 })
+      );
+      headstock.position.set(-0.02, 0.3 + neckLen + 0.1, 0.01);
+      instrumentGroup.add(headstock);
 
-    const strap = new THREE.Mesh(
-      new THREE.TorusGeometry(0.46, 0.032, 6, 20),
-      new THREE.MeshStandardMaterial({ color: 0x0f172a })
-    );
-    strap.position.set(-0.08, 0.18, -0.34);
-    strap.rotation.y = Math.PI / 2;
-    strap.rotation.x = 0.42;
-    instrumentGroup.add(strap);
+      const strap = new THREE.Mesh(
+        new THREE.TorusGeometry(0.46, 0.032, 6, 20),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a })
+      );
+      strap.position.set(-0.08, 0.18, -0.34);
+      strap.rotation.y = Math.PI / 2;
+      strap.rotation.x = 0.42;
+      instrumentGroup.add(strap);
 
-    bodyGroup.add(instrumentGroup);
+      bodyGroup.add(instrumentGroup);
 
-    leftArmPivot.rotation.x = -1.15;
-    leftArmPivot.rotation.z = -0.45;
+      leftArmPivot.rotation.x = -1.15;
+      leftArmPivot.rotation.z = -0.45;
+    }
 
     if (member.id === 'yonghwa') {
       const yonghwaStickMat = new THREE.MeshStandardMaterial({

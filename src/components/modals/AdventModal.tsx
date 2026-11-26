@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Pencil,
   RotateCcw,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ export function AdventModal({
   questionOverrides = {},
   onSaveAdminQuestion,
   onResetAdminQuestion,
+  onDeletePublicAdventAnswer,
   onClose,
 }: {
   todayKstStr: string;
@@ -75,6 +77,7 @@ export function AdventModal({
   questionOverrides?: Record<string, string>;
   onSaveAdminQuestion?: (dateStr: string, newQuestion: string) => void;
   onResetAdminQuestion?: (dateStr: string) => void;
+  onDeletePublicAdventAnswer?: (id: string) => void;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
@@ -136,20 +139,6 @@ export function AdventModal({
         grp.seenTexts.add(entry.text);
         grp.answers.push({ id: entry.id, text: entry.text });
       }
-    }
-
-    const unlockedDays = isAdminMode
-      ? [...ADVENT_DAILY_LIST].reverse()
-      : ADVENT_DAILY_LIST.filter((item) => item.dateStr <= todayKstStr).reverse();
-    const starterPool = unlockedDays.slice(0, 3);
-    for (const dayObj of starterPool) {
-      const grp = ensureBucket(dayObj.dateStr);
-      dayObj.sampleAnswers.forEach((sampleTxt, idx) => {
-        if (!grp.seenTexts.has(sampleTxt)) {
-          grp.seenTexts.add(sampleTxt);
-          grp.answers.push({ id: `sample-${dayObj.dateStr}-${idx}`, text: sampleTxt });
-        }
-      });
     }
 
     const groups = Array.from(bucket.values())
@@ -452,7 +441,7 @@ export function AdventModal({
                         </div>
                         <h3 className="text-sm sm:text-base font-extrabold text-white mt-1.5">
                           {currentAdventObj.year}.{String(currentAdventObj.month).padStart(2, '0')}.
-                          {String(currentAdventObj.day).padStart(2, '0')} · {currentAdventObj.title}
+                          {String(currentAdventObj.day).padStart(2, '0')}
                         </h3>
                       </div>
                       {checkedDates.includes(currentAdventObj.dateStr) && (
@@ -735,13 +724,25 @@ export function AdventModal({
                         {isOpen && (
                           <div className="border-t border-white/10 bg-slate-900/50 divide-y divide-white/5 px-3.5">
                             {group.answers.map((ans) => (
-                              <p
+                              <div
                                 key={ans.id}
-                                className="py-2 text-xs text-slate-100 leading-relaxed flex items-start gap-2"
+                                className="py-2 text-xs text-slate-100 leading-relaxed flex items-start justify-between gap-2"
                               >
-                                <span className="text-sky-400 shrink-0">•</span>
-                                <span>{ans.text}</span>
-                              </p>
+                                <p className="flex items-start gap-2 min-w-0 flex-1">
+                                  <span className="text-sky-400 shrink-0">•</span>
+                                  <span className="break-words">{ans.text}</span>
+                                </p>
+                                {isAdminMode && onDeletePublicAdventAnswer && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDeletePublicAdventAnswer(ans.id)}
+                                    title="답변 삭제 (관리자)"
+                                    className="p-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/30 text-rose-300 shrink-0 transition"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             ))}
                           </div>
                         )}

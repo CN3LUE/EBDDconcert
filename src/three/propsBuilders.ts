@@ -254,8 +254,14 @@ export function buildBloomFlowerMesh(THREE: any, memo: PlazaMemo) {
 
   const tagTex = createNameTagTexture(THREE, `🌸 ${memo.author}`, memo.text, false);
   const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: tagTex, transparent: true, depthTest: false })
+    new THREE.SpriteMaterial({
+      map: tagTex,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+    })
   );
+  sprite.visible = false;
   sprite.position.set(0, 2.25, 0);
   sprite.scale.set(2.85, 1.06, 1);
   fGroup.add(sprite);
@@ -264,6 +270,6 @@ export function buildBloomFlowerMesh(THREE: any, memo: PlazaMemo) {
     child.userData = { ...child.userData, memoId: memo.id };
   });
 
-  fGroup.userData = { swayGroup, aura };
+  fGroup.userData = { swayGroup, aura, labelSprite: sprite };
   return fGroup;
 }

@@ -503,6 +503,16 @@ export async function addPublicAdventAnswer(
   }
 }
 
+export async function deletePublicAdventAnswer(id: string): Promise<void> {
+  if (!id || id.startsWith('local-') || id.startsWith('sample-')) return;
+  const path = `advent_answers/${id}`;
+  try {
+    await deleteDoc(doc(db, 'advent_answers', id));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
 export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): () => void {
   const path = 'flower_memos';
   const q = query(collection(db, 'flower_memos'), where('isPublic', '==', true));

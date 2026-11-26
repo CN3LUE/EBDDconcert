@@ -149,6 +149,12 @@ export interface TranslationDict {
   settingsAdminOffDesc: string;
   settingsAdminToggleOn: string;
   settingsAdminToggleOff: string;
+  adminMemberRunLabel: string;
+  adminMemberRunDesc: string;
+  adminMemberRunStop: string;
+  memberRunBannerTitle: (memberId: 'yonghwa' | 'minhyuk' | 'jungshin') => string;
+  memberRunJoinBtn: string;
+  memberRunTimer: (sec: number) => string;
   profileAdminBanner: string;
   // Profile
   profileTitle: string;
@@ -346,6 +352,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsAdminOffDesc: '일반 팬 화면으로 미리보기 중입니다.',
     settingsAdminToggleOn: '관리자 ON',
     settingsAdminToggleOff: '일반 모드',
+    adminMemberRunLabel: '멤버 타임 테스트 (1분 러닝)',
+    adminMemberRunDesc: '용화시(06:22)·민혁시(06:28)·정신시(09:15) 이벤트를 즉시 미리보기합니다.',
+    adminMemberRunStop: '테스트 중지',
+    memberRunBannerTitle: (memberId) =>
+      memberId === 'yonghwa'
+        ? '🎸 정용화가 열심히 뛰고 있습니다! 같이 뛰어요!'
+        : memberId === 'minhyuk'
+        ? '🥁 강민혁이 열심히 뛰고 있습니다! 같이 뛰어요!'
+        : '🎸 이정신이 열심히 뛰고 있습니다! 같이 뛰어요!',
+    memberRunJoinBtn: '🏃 같이 뛰기!',
+    memberRunTimer: (sec) => `${sec}초`,
     profileAdminBanner: '👑 관리자 모드 활성 · 모든 MD 아이템을 자유롭게 착용해 볼 수 있어요!',
     profileTitle: '내 아바타 & MD 꾸미기',
     profileSubtitle: '헤어스타일 · 캡 · 트랙 자켓 · 뛰봉 · 에.바.뛰. 부채 · 양손 슬로건',
@@ -563,6 +580,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsAdminOffDesc: 'Previewing as a regular fan.',
     settingsAdminToggleOn: 'Admin ON',
     settingsAdminToggleOff: 'Fan View',
+    adminMemberRunLabel: 'Member Time Preview (1m Run)',
+    adminMemberRunDesc: 'Test Yonghwa (06:22), Minhyuk (06:28), and Jungshin (09:15) plaza runs.',
+    adminMemberRunStop: 'Stop Preview',
+    memberRunBannerTitle: (memberId) =>
+      memberId === 'yonghwa'
+        ? '🎸 Jung Yonghwa is running hard! Let’s run together!'
+        : memberId === 'minhyuk'
+        ? '🥁 Kang Minhyuk is running hard! Let’s run together!'
+        : '🎸 Lee Jungshin is running hard! Let’s run together!',
+    memberRunJoinBtn: '🏃 Run Together!',
+    memberRunTimer: (sec) => `${sec}s`,
     profileAdminBanner: '👑 Admin Mode Active · All MD items are unlocked for preview!',
     profileTitle: 'My Avatar & MD',
     profileSubtitle: 'Hairstyle · Cap · Track Jacket · Ttuibong · Fan · Slogan',
@@ -777,6 +805,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsAdminOffDesc: '当前正在预览普通粉丝视图。',
     settingsAdminToggleOn: '管理员 ON',
     settingsAdminToggleOff: '普通视图',
+    adminMemberRunLabel: '成员时间预览 (1分钟奔跑)',
+    adminMemberRunDesc: '立即测试容和时(06:22)、敏赫时(06:28)、正信时(09:15)广场奔跑活动。',
+    adminMemberRunStop: '停止测试',
+    memberRunBannerTitle: (memberId) =>
+      memberId === 'yonghwa'
+        ? '🎸 郑容和正在努力奔跑！一起来跑吧！'
+        : memberId === 'minhyuk'
+        ? '🥁 姜敏赫正在努力奔跑！一起来跑吧！'
+        : '🎸 李正信正在努力奔跑！一起来跑吧！',
+    memberRunJoinBtn: '🏃 一起跑！',
+    memberRunTimer: (sec) => `${sec}秒`,
     profileAdminBanner: '👑 管理员模式已开启 · 可自由试穿全部周边道具！',
     profileTitle: '我的角色 & 周边装扮',
     profileSubtitle: '发型 · 帽子 · 运动夹克 · 跳棒 · 应援扇 · 双手手幅',
@@ -992,6 +1031,17 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     settingsAdminOffDesc: '一般ファン画面をプレビュー中です。',
     settingsAdminToggleOn: '管理者 ON',
     settingsAdminToggleOff: '一般モード',
+    adminMemberRunLabel: 'メンバータイムテスト (1分間ラン)',
+    adminMemberRunDesc: 'ヨンファ時(06:22)・ミンヒョク時(06:28)・ジョンシン時(09:15)を即座にテストします。',
+    adminMemberRunStop: 'テスト停止',
+    memberRunBannerTitle: (memberId) =>
+      memberId === 'yonghwa'
+        ? '🎸 ジョン・ヨンファが全力で走っています！一緒に走りましょう！'
+        : memberId === 'minhyuk'
+        ? '🥁 カン・ミンヒョクが全力で走っています！一緒に走りましょう！'
+        : '🎸 イ・ジョンシンが全力で走っています！一緒に走りましょう！',
+    memberRunJoinBtn: '🏃 一緒に走る！',
+    memberRunTimer: (sec) => `${sec}秒`,
     profileAdminBanner: '👑 管理者モード有効 · すべてのMDアイテムを着せ替えできます！',
     profileTitle: 'マイアバター & MD着せ替え',
     profileSubtitle: 'ヘアスタイル · キャップ · トラックジャケット · ティボン · うちわ · スローガン',

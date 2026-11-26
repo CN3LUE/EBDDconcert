@@ -11,8 +11,6 @@ import {
   Footprints,
   LayoutGrid,
   Building2,
-  Star,
-  MapPin,
   Gamepad2,
   Flame,
   Settings,
@@ -35,15 +33,18 @@ import {
   ADVENT_END_DATE,
   ADVENT_START_DATE,
   ADVENT_UNLOCK_MILESTONES,
+  type BandMemberId,
   createRoomNpcs,
   DOME_ALBUM_SPINES,
   FLOWER_COLORS,
   getConcertDDay,
+  getKstClockParts,
   getKstTodayStr,
   getLanePosition,
   getLiveRadioState,
   LANE_RADII,
   MAX_ROOM_CAPACITY,
+  MEMBER_TIME_SCHEDULES,
   OUTFIT_OPTIONS,
   PLAZA_BENCHES,
   ROOM_LIST,
@@ -54,6 +55,7 @@ import {
   addPublicAdventAnswer,
   addPublicFlowerMemo,
   deleteAdminAdventQuestion,
+  deletePublicAdventAnswer,
   deletePublicFlowerMemo,
   initFirebaseAuth,
   loadCachedAdventQuestionOverrides,
@@ -305,7 +307,6 @@ export function App() {
   useEffect(() => {
     peersRef.current = peers;
   }, [peers]);
-  const [selectedPeer, setSelectedPeer] = useState<FanPeer | null>(null);
 
   // --- 「그러나, 꽃이었다」 메모 ---
   const cachedMemosRef = useRef<PlazaMemo[] | null>(loadCachedFlowerMemos());
@@ -338,6 +339,10 @@ export function App() {
   }, [displayMemos]);
 
   const [selectedMemo, setSelectedMemo] = useState<PlazaMemo | null>(null);
+  const selectedMemoIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedMemoIdRef.current = selectedMemo?.id ?? null;
+  }, [selectedMemo]);
   const [newMemoText, setNewMemoText] = useState<string>('');
   const [newMemoColor, setNewMemoColor] = useState<string>(FLOWER_COLORS[6].hex);
 
@@ -381,6 +386,22 @@ export function App() {
   const [yonghwaEyeContactOpen, setYonghwaEyeContactOpen] = useState<boolean>(false);
   const eyeContactCooldownUntilRef = useRef<number>(0);
   const yonghwaShoutTimerRef = useRef<number | null>(null);
+  const [activeMemberRun, setActiveMemberRun] = useState<{
+    member: BandMemberId;
+    untilMs: number;
+    isPreview?: boolean;
+  } | null>(null);
+  const [memberRunDismissed, setMemberRunDismissed] = useState<boolean>(false);
+  const [memberRunRemainingSec, setMemberRunRemainingSec] = useState<number>(0);
+  const activeMemberRunRef = useRef<{
+    member: BandMemberId;
+    untilMs: number;
+    isPreview?: boolean;
+  } | null>(null);
+  useEffect(() => {
+    activeMemberRunRef.current = activeMemberRun;
+  }, [activeMemberRun]);
+  const lastTriggeredMemberSlotRef = useRef<string>('');
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const isPlayingAudioRef = useRef<boolean>(false);
   isPlayingAudioRef.current = isPlayingAudio;
@@ -506,6 +527,11 @@ export function App() {
     bandMembers?: {
       minhyuk?: any;
       yonghwa?: any;
+      jungshin?: any;
+    };
+    plazaMemberRunners?: {
+      yonghwa?: any;
+      minhyuk?: any;
       jungshin?: any;
     };
     particles?: Array<{
@@ -842,7 +868,6 @@ export function App() {
       }
 
       setPeers(createRoomNpcs(room.id, room.baseCount - 1));
-      setSelectedPeer(null);
       setActiveModal('none');
       showToast(`🚩 [${room.name}] 트랙 위치로 이동했습니다! '달리기 RUN!'을 눌러 달려보세요.`);
     },
@@ -1166,6 +1191,92 @@ export function App() {
       }
     };
   }, []);
+
+  // 용화시(06:22/18:22) · 민혁시(06:28/18:28) · 정신시(09:15/21:15) KST 1분 게릴라 러닝 스케줄러
+  useEffect(() => {
+    const checkClock = () => {
+      const nowMs = Date.now();
+      const { dateStr, hour, minute, second } = getKstClockParts(nowMs);
+      const matched = MEMBER_TIME_SCHEDULES.find(
+        (item) => item.hours.includes(hour) && item.minute === minute
+      );
+      if (matched) {
+        const slotKey = `${dateStr}-${String(hour).padStart(2, '0')}-${String(minute).padStart(2, '0')}-${matched.id}`;
+        if (lastTriggeredMemberSlotRef.current !== slotKey) {
+          lastTriggeredMemberSlotRef.current = slotKey;
+          const remMs = Math.max(5000, (60 - second) * 1000);
+          setMemberRunDismissed(false);
+          setActiveMemberRun({
+            member: matched.id,
+            untilMs: nowMs + remMs,
+            isPreview: false,
+          });
+        }
+      }
+
+      setActiveMemberRun((prev) => {
+        if (!prev) {
+          setMemberRunRemainingSec(0);
+          return null;
+        }
+        const leftMs = prev.untilMs - nowMs;
+        if (leftMs <= 0) {
+          setMemberRunRemainingSec(0);
+          return null;
+        }
+        setMemberRunRemainingSec(Math.ceil(leftMs / 1000));
+        return prev;
+      });
+    };
+
+    checkClock();
+    const timer = window.setInterval(checkClock, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const handleTriggerMemberRunPreview = useCallback(
+    (memberId: BandMemberId) => {
+      const nowMs = Date.now();
+      setMemberRunDismissed(false);
+      setActiveMemberRun({
+        member: memberId,
+        untilMs: nowMs + 60000,
+        isPreview: true,
+      });
+      setMemberRunRemainingSec(60);
+      setActiveModal('none');
+      if (viewModeRef.current === 'arena') {
+        switchViewMode('plaza');
+      }
+    },
+    [switchViewMode]
+  );
+
+  const handleStopMemberRunPreview = useCallback(() => {
+    setActiveMemberRun(null);
+    setMemberRunRemainingSec(0);
+    showToast('⏹ 멤버 타임 미리보기를 종료했습니다.');
+  }, [showToast]);
+
+  const handleJoinMemberRun = useCallback(() => {
+    if (viewModeRef.current === 'arena') {
+      switchViewMode('plaza');
+    }
+    pendingBenchRef.current = null;
+    myPosRef.current.targetY = 0;
+    if (!isTrackRunningRef.current) {
+      const curAngle = Math.atan2(
+        myPosRef.current.z - TRACK_CENTER_Z,
+        myPosRef.current.x - TRACK_CENTER_X
+      );
+      trackAngleRef.current = curAngle;
+      isTrackRunningRef.current = true;
+      myActionRef.current = 'run';
+      setMyAction('run');
+    }
+    spawnFloatingParticles('#facc15');
+    showToast('🏃‍♂️ 멤버와 함께 KSPO DOME 트랙을 달립니다!');
+  }, [switchViewMode, spawnFloatingParticles, showToast]);
 
   // ============================================================================
   // 8. 메인 Three.js 3D 씬 초기화 (외부 러닝트랙 광장 + KSPO DOME 내부 좌석배치도)
@@ -1562,6 +1673,49 @@ export function App() {
         });
         plazaWorldGroup.add(benchGroup);
       });
+
+      // 용화시·민혁시·정신시 광장 트랙 게릴라 러닝용 CNBLUE 멤버 캐릭터
+      const plazaRunnerYonghwa = buildBandMemberMesh(
+        THREE,
+        {
+          id: 'yonghwa',
+          name: '🎸 정용화',
+          roleLabel: '같이 에바뛰 해요!! 🏃‍♂️🔥',
+          quote: '🎸 정용화: 용화시! 지금 같이 트랙 달려요!! 🔥',
+        },
+        { plazaRunner: true }
+      );
+      plazaRunnerYonghwa.visible = false;
+      plazaRunnerYonghwa.userData.trackAngle = Math.PI * 0.5;
+      plazaWorldGroup.add(plazaRunnerYonghwa);
+
+      const plazaRunnerMinhyuk = buildBandMemberMesh(
+        THREE,
+        {
+          id: 'minhyuk',
+          name: '🥁 강민혁',
+          roleLabel: '오늘도 힘차게 달려요!! 🥁💙',
+          quote: '🥁 강민혁: 민혁시! 오늘도 리듬 타며 달려요!! 💙',
+        },
+        { plazaRunner: true }
+      );
+      plazaRunnerMinhyuk.visible = false;
+      plazaRunnerMinhyuk.userData.trackAngle = Math.PI * 0.5;
+      plazaWorldGroup.add(plazaRunnerMinhyuk);
+
+      const plazaRunnerJungshin = buildBandMemberMesh(
+        THREE,
+        {
+          id: 'jungshin',
+          name: '🎸 이정신',
+          roleLabel: '끝까지 같이 뛰어보자!! 🏃‍♂️✨',
+          quote: '🎸 이정신: 정신시! 끝까지 같이 뛰어요!! 켁✨',
+        },
+        { plazaRunner: true }
+      );
+      plazaRunnerJungshin.visible = false;
+      plazaRunnerJungshin.userData.trackAngle = Math.PI * 0.5;
+      plazaWorldGroup.add(plazaRunnerJungshin);
 
       // ======================================================================
       // WORLD B: KSPO DOME 내부 3D 공연장
@@ -2099,6 +2253,11 @@ export function App() {
           yonghwa: memberYonghwa,
           jungshin: memberJungshin,
         },
+        plazaMemberRunners: {
+          yonghwa: plazaRunnerYonghwa,
+          minhyuk: plazaRunnerMinhyuk,
+          jungshin: plazaRunnerJungshin,
+        },
         particles,
       };
 
@@ -2116,8 +2275,14 @@ export function App() {
 
       const raycaster = new THREE.Raycaster();
       const pointerNDC = new THREE.Vector2();
+      const hoverRaycaster = new THREE.Raycaster();
+      const hoverNDC = new THREE.Vector2();
+      const flowerTargets: any[] = [];
+      let hoveredMemoId: string | null = null;
+      let lastHoverCheckMs = 0;
       const pressedKeys = new Set<string>();
       const domElem = renderer.domElement;
+      domElem.style.cursor = 'grab';
 
       const handlePointerDown = (e: PointerEvent) => {
         isDragging = true;
@@ -2125,21 +2290,80 @@ export function App() {
         pointerDownY = e.clientY;
         lastPointerX = e.clientX;
         lastPointerY = e.clientY;
+        domElem.style.cursor = 'grabbing';
       };
 
       const handlePointerMove = (e: PointerEvent) => {
-        if (!isDragging) return;
-        const dx = e.clientX - lastPointerX;
-        const dy = e.clientY - lastPointerY;
-        lastPointerX = e.clientX;
-        lastPointerY = e.clientY;
-        camYaw -= dx * 0.0065;
-        camPitch = Math.max(0.18, Math.min(1.15, camPitch + dy * 0.0055));
+        if (isDragging) {
+          const dx = e.clientX - lastPointerX;
+          const dy = e.clientY - lastPointerY;
+          lastPointerX = e.clientX;
+          lastPointerY = e.clientY;
+          camYaw -= dx * 0.0065;
+          camPitch = Math.max(0.18, Math.min(1.15, camPitch + dy * 0.0055));
+          return;
+        }
+
+        if (viewModeRef.current !== 'plaza' || flowerMeshes.size === 0) {
+          if (hoveredMemoId !== null) {
+            hoveredMemoId = null;
+            domElem.style.cursor = 'grab';
+          }
+          return;
+        }
+
+        const now = performance.now();
+        if (now - lastHoverCheckMs < 75) return;
+        lastHoverCheckMs = now;
+
+        const rect = domElem.getBoundingClientRect();
+        if (
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom
+        ) {
+          if (hoveredMemoId !== null) {
+            hoveredMemoId = null;
+            domElem.style.cursor = 'grab';
+          }
+          return;
+        }
+
+        hoverNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        hoverNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        hoverRaycaster.setFromCamera(hoverNDC, camera);
+
+        flowerTargets.length = 0;
+        flowerMeshes.forEach((m) => flowerTargets.push(m));
+        const hits = hoverRaycaster.intersectObjects(flowerTargets, true);
+        let nextHoverId: string | null = null;
+        for (let i = 0; i < hits.length; i++) {
+          const hitObj = hits[i].object;
+          if (hitObj.visible !== false && hitObj.userData?.memoId) {
+            nextHoverId = hitObj.userData.memoId;
+            break;
+          }
+        }
+        if (hoveredMemoId !== nextHoverId) {
+          hoveredMemoId = nextHoverId;
+          domElem.style.cursor = nextHoverId ? 'pointer' : 'grab';
+        }
+      };
+
+      const handlePointerLeave = () => {
+        if (hoveredMemoId !== null) {
+          hoveredMemoId = null;
+          if (!isDragging) domElem.style.cursor = 'grab';
+        }
       };
 
       const handlePointerUp = (e: PointerEvent) => {
         if (!isDragging) return;
         isDragging = false;
+        domElem.style.cursor = hoveredMemoId ? 'pointer' : 'grab';
         const moved = Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY);
 
         if (moved < 8) {
@@ -2210,13 +2434,6 @@ export function App() {
               handleSitOnBench(hit.object.userData.plazaBench);
               targetRing.visible = false;
               return;
-            }
-            if (hit.object.userData?.peerId) {
-              const foundPeer = peersRef.current.find((p) => p.id === hit.object.userData.peerId);
-              if (foundPeer) {
-                setSelectedPeer(foundPeer);
-                return;
-              }
             }
             if (hit.object.name === 'plaza_ground') {
               let tx = hit.point.x;
@@ -2295,6 +2512,7 @@ export function App() {
       };
 
       domElem.addEventListener('pointerdown', handlePointerDown);
+      domElem.addEventListener('pointerleave', handlePointerLeave);
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
       domElem.addEventListener('wheel', handleWheel, { passive: false });
@@ -3078,7 +3296,67 @@ export function App() {
 
         advanceStageRunner(memberJungshin, jungshinStagePath, jungshinRunnerState, 'walk_run_cycle', 1.4);
 
-        // 4. 「그러나, 꽃이었다」 응원 꽃밭 3D 오브젝트 동기화 (추가/수정/삭제 실시간 반영)
+        // 3-3. 용화시/민혁시/정신시 광장 트랙 1분 게릴라 러닝
+        const activeRunState = activeMemberRunRef.current;
+        const isMemberRunLive = Boolean(activeRunState && Date.now() < activeRunState.untilMs);
+        const runnerEntries: Array<[BandMemberId, any]> = [
+          ['yonghwa', plazaRunnerYonghwa],
+          ['minhyuk', plazaRunnerMinhyuk],
+          ['jungshin', plazaRunnerJungshin],
+        ];
+        runnerEntries.forEach(([id, runnerMesh]) => {
+          if (!runnerMesh?.userData) return;
+          const shouldShow = isMemberRunLive && activeRunState?.member === id;
+          runnerMesh.visible = shouldShow;
+          if (!shouldShow) return;
+
+          const laneR = LANE_RADII[2];
+          const runSpeed = 9.0;
+          const curAng =
+            typeof runnerMesh.userData.trackAngle === 'number'
+              ? runnerMesh.userData.trackAngle
+              : Math.PI * 0.5;
+          const nextAng = curAng - (runSpeed / laneR) * dt;
+          runnerMesh.userData.trackAngle = nextAng;
+
+          const ud = runnerMesh.userData;
+          const runCycle = elapsed * 15.5;
+          const jumpY = Math.abs(Math.sin(runCycle)) * 0.1;
+          runnerMesh.position.set(
+            TRACK_CENTER_X + Math.cos(nextAng) * laneR,
+            jumpY,
+            TRACK_CENTER_Z + Math.sin(nextAng) * laneR
+          );
+          runnerMesh.rotation.y = Math.atan2(Math.sin(nextAng), -Math.cos(nextAng));
+
+          if (ud.leftLeg && ud.rightLeg) {
+            ud.leftLeg.rotation.x = Math.sin(runCycle) * 0.85;
+            ud.rightLeg.rotation.x = -Math.sin(runCycle) * 0.85;
+          }
+          if (ud.leftArmPivot) {
+            ud.leftArmPivot.rotation.x = -Math.sin(runCycle) * 0.72;
+            ud.leftArmPivot.rotation.z = 0;
+          }
+          if (ud.rightArmPivot) {
+            if (ud.hasLightstick || ud.hasFan) {
+              ud.rightArmPivot.rotation.x = -2.2 + Math.sin(runCycle * 0.7) * 0.28;
+              ud.rightArmPivot.rotation.z = -0.18 + Math.cos(runCycle * 0.7) * 0.12;
+            } else {
+              ud.rightArmPivot.rotation.x = -0.9 + Math.sin(runCycle) * 0.55;
+              ud.rightArmPivot.rotation.z = 0;
+            }
+          }
+          if (ud.bodyGroup) {
+            ud.bodyGroup.position.y = 0.92 + Math.abs(Math.sin(runCycle)) * 0.06;
+            ud.bodyGroup.rotation.x = 0.16;
+          }
+          if (ud.spotRing) {
+            const ringScale = 1 + Math.sin(elapsed * 7) * 0.14;
+            ud.spotRing.scale.set(ringScale, ringScale, 1);
+          }
+        });
+
+        // 4. 「그러나, 꽃이었다」 응원 꽃밭 3D 오브젝트 동기화 (근접/호버/선택 시에만 말풍선 표시)
         const currentMemos = memosRef.current;
         const memoIds = new Set(currentMemos.map((m) => m.id));
         flowerMeshes.forEach((mesh, id) => {
@@ -3088,6 +3366,25 @@ export function App() {
             flowerMeshes.delete(id);
           }
         });
+
+        let nearestMemoId: string | null = null;
+        let nearestDistSq = 4.2 * 4.2;
+        if (viewModeRef.current === 'plaza') {
+          const px = myPosRef.current.x;
+          const pz = myPosRef.current.z;
+          for (let i = 0; i < currentMemos.length; i++) {
+            const m = currentMemos[i];
+            const dx = m.x - px;
+            const dz = m.z - pz;
+            const dSq = dx * dx + dz * dz;
+            if (dSq <= nearestDistSq) {
+              nearestDistSq = dSq;
+              nearestMemoId = m.id;
+            }
+          }
+        }
+        const activeSelectedMemoId = selectedMemoIdRef.current;
+        const labelLerp = Math.min(1, dt * 10);
 
         currentMemos.forEach((memo, idx) => {
           let fGroup = flowerMeshes.get(memo.id);
@@ -3110,6 +3407,18 @@ export function App() {
           if (fGroup.userData?.swayGroup) {
             fGroup.userData.swayGroup.rotation.z = Math.sin(elapsed * 2.0 + idx) * 0.08;
             fGroup.userData.swayGroup.rotation.x = Math.cos(elapsed * 1.7 + idx) * 0.06;
+          }
+          const labelSprite = fGroup.userData?.labelSprite;
+          if (labelSprite?.material) {
+            const shouldShowLabel =
+              memo.id === nearestMemoId ||
+              memo.id === hoveredMemoId ||
+              memo.id === activeSelectedMemoId;
+            const targetOpacity = shouldShowLabel ? 1 : 0;
+            const curOpacity = labelSprite.material.opacity ?? 0;
+            const nextOpacity = curOpacity + (targetOpacity - curOpacity) * labelLerp;
+            labelSprite.material.opacity = !shouldShowLabel && nextOpacity < 0.01 ? 0 : nextOpacity;
+            labelSprite.visible = labelSprite.material.opacity > 0.02;
           }
         });
 
@@ -3167,6 +3476,7 @@ export function App() {
         isDisposed = true;
         cancelAnimationFrame(animationFrameId);
         domElem.removeEventListener('pointerdown', handlePointerDown);
+        domElem.removeEventListener('pointerleave', handlePointerLeave);
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
         domElem.removeEventListener('wheel', handleWheel);
@@ -3463,6 +3773,17 @@ export function App() {
     }
   };
 
+  const handleDeletePublicAdventAnswer = (id: string) => {
+    setPublicAdventAnswers((prev) => prev.filter((item) => item.id !== id));
+    showToast('🗑️ 관리자 권한으로 해당 어드벤트 답변 기록을 삭제했습니다.');
+    if (user && !id.startsWith('local-') && !id.startsWith('sample-')) {
+      deletePublicAdventAnswer(id).catch((err) => {
+        console.error('Delete public advent answer error:', err);
+        showToast('⚠️ 답변 삭제 권한을 확인해주세요.');
+      });
+    }
+  };
+
   const handleCheckInAdvent = (dateStr: string) => {
     if (!isAdminMode && dateStr > todayKstStr) {
       const lockedObj = ADVENT_DAILY_LIST.find((d) => d.dateStr === dateStr);
@@ -3718,9 +4039,48 @@ export function App() {
           </div>
         </header>
 
+        {/* 멤버 타임(용화시·민혁시·정신시) 1분 게릴라 러닝 알림 배너 */}
+        {activeMemberRun && !memberRunDismissed && memberRunRemainingSec > 0 && (
+          <div className="fixed top-[104px] sm:top-[116px] left-1/2 -translate-x-1/2 z-30 w-[min(94vw,460px)] px-3 py-2.5 rounded-2xl bg-gradient-to-r from-blue-950/95 via-slate-900/95 to-indigo-950/95 backdrop-blur-md border border-amber-300/60 shadow-2xl flex items-center justify-between gap-2.5 pointer-events-auto">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-1.5 py-0.5 rounded-md bg-amber-400/20 border border-amber-300/40 text-[10px] font-extrabold text-amber-200 whitespace-nowrap">
+                  {t.memberRunTimer(memberRunRemainingSec)}
+                </span>
+                <p className="text-xs sm:text-sm font-extrabold text-white leading-snug [word-break:keep-all]">
+                  {t.memberRunBannerTitle(activeMemberRun.member)}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleJoinMemberRun}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-extrabold whitespace-nowrap shadow transition active:scale-95"
+              >
+                {t.memberRunJoinBtn}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMemberRunDismissed(true)}
+                aria-label="닫기"
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 transition"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 상단 토스트 알림 배너 (단어 잘림 없이 한 줄 우선 표시) */}
         {toastMsg && (
-          <div className="fixed top-24 sm:top-28 left-1/2 -translate-x-1/2 z-40 w-max max-w-[92vw] px-3.5 py-2 rounded-2xl bg-slate-900/95 border border-sky-400/50 text-[11px] sm:text-sm font-bold text-sky-100 leading-snug shadow-2xl backdrop-blur-md text-center [word-break:keep-all] [overflow-wrap:break-word] pointer-events-none">
+          <div
+            className={`fixed ${
+              activeMemberRun && !memberRunDismissed && memberRunRemainingSec > 0
+                ? 'top-[164px] sm:top-[176px]'
+                : 'top-24 sm:top-28'
+            } left-1/2 -translate-x-1/2 z-40 w-max max-w-[92vw] px-3.5 py-2 rounded-2xl bg-slate-900/95 border border-sky-400/50 text-[11px] sm:text-sm font-bold text-sky-100 leading-snug shadow-2xl backdrop-blur-md text-center [word-break:keep-all] [overflow-wrap:break-word] pointer-events-none`}
+          >
             {toastMsg}
           </div>
         )}
@@ -3811,44 +4171,6 @@ export function App() {
             </div>
           </div>
         )}
-
-      {/* 선택한 다른 보이스 팬 프로필 팝업 카드 */}
-      {selectedPeer && (
-        <div className="absolute left-3 sm:left-4 bottom-36 sm:bottom-32 z-30 w-64 p-3.5 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-sky-400/40 shadow-2xl space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="text-xs font-extrabold text-white flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 text-sky-400" />
-                <span>{selectedPeer.name}</span>
-              </div>
-              <div className="text-[11px] text-sky-300 flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3 h-3" />
-                <span>{selectedPeer.seatZone}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => setSelectedPeer(null)}
-              className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {selectedPeer.speech && (
-            <p className="text-xs text-slate-200 bg-slate-950/75 p-2 rounded-xl border border-white/10">
-              “{selectedPeer.speech}”
-            </p>
-          )}
-          <button
-            onClick={() => {
-              triggerAction('greet', t.greetPeerToast(selectedPeer.name));
-              setSelectedPeer(null);
-            }}
-            className="w-full py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-extrabold text-white transition"
-          >
-            {t.greetPeerBtn}
-          </button>
-        </div>
-      )}
 
       {/* 하단 액션 바 (달리기 RUN + 응원/감정 5종 메뉴) & 한마디 말풍선 입력 */}
       <footer className="absolute bottom-0 left-0 right-0 z-20 p-2.5 sm:p-4 flex flex-col items-center gap-2 pointer-events-none">
@@ -4034,6 +4356,7 @@ export function App() {
           questionOverrides={adventQuestionOverrides}
           onSaveAdminQuestion={handleSaveAdminQuestion}
           onResetAdminQuestion={handleResetAdminQuestion}
+          onDeletePublicAdventAnswer={handleDeletePublicAdventAnswer}
           onClose={() => setActiveModal('none')}
         />
       )}
@@ -4149,6 +4472,7 @@ export function App() {
           skyTheme={skyTheme}
           isAdminAuthorized={isAdminAuthorized}
           isAdminMode={isAdminMode}
+          activeMemberRunMember={activeMemberRun?.member ?? null}
           onToggleAdminMode={handleToggleAdminMode}
           onAdminSignIn={() => handleGoogleSignIn(true)}
           onSignOut={() => {
@@ -4156,6 +4480,8 @@ export function App() {
               .then(() => showToast('로그아웃되었습니다.'))
               .catch((err) => console.error('Sign out error:', err));
           }}
+          onTriggerMemberRunPreview={handleTriggerMemberRunPreview}
+          onStopMemberRunPreview={handleStopMemberRunPreview}
           onChangeSkyTheme={setSkyTheme}
           onChangeLang={handleChangeLang}
           onOpenProfile={() => setActiveModal('profile')}

@@ -355,10 +355,10 @@ export function createRoomNpcs(roomId: number, count: number): FanPeer[] {
 
 export const DAILY_CONCERT_QUESTIONS: string[] = [
   '에바뛰콘 소식을 처음 들었을 때 가장 먼저 든 생각은 무엇인가요?',
-  '내가 보이스(BOICE)가 된 운명적인 계기는?',
+  '에바뛰콘 오프닝 첫 곡이었으면 하는 노래는?',
   '씨엔블루 노래 중 가장 처음 들었던 곡은 무엇인가요?',
   '매일 들어도 절대 질리지 않는 나만의 최애곡은?',
-  '비 오는 날 꼭 생각나는 씨엔블루 노래는?',
+  '내가 보이스(BOICE)가 된 운명적인 계기는?',
   '기분 좋을 때 들으면 텐션이 폭발하는 곡은?',
   '위로가 필요할 때 찾아 듣는 나만의 힐링곡은?',
   '이번 KSPO DOME 에바뛰콘에서 가장 기대되는 무대는?',
@@ -393,8 +393,8 @@ export const DAILY_CONCERT_QUESTIONS: string[] = [
   '타이틀곡 못지않게 아끼는 숨은 수록곡 명곡은?',
   '일본 발표곡 중 한국 콘서트에서 꼭 듣고 싶은 곡은?',
   '멤버별 솔로곡 중 최애곡을 하나 꼽는다면?',
-  '에바뛰콘 오프닝 첫 곡으로 터졌으면 하는 노래는?',
   '본 공연 마지막을 장식했으면 하는 노래는?',
+  '비 오는 날 꼭 생각나는 씨엔블루 노래는?',
   '앵콜 첫 곡으로 듣고 싶은 노래는 무엇인가요?',
   '앵앵앵콜까지 끝없이 뛰어놀고 싶은 신나는 곡은?',
   '돌출무대로 멤버들이 다가올 때 외치고 싶은 말은?',
@@ -458,6 +458,66 @@ export function getKstTodayStr(): string {
   return `${y}-${m}-${d}`;
 }
 
+export type BandMemberId = 'yonghwa' | 'minhyuk' | 'jungshin';
+
+export interface MemberTimeScheduleItem {
+  id: BandMemberId;
+  hours: readonly [number, number];
+  minute: number;
+  timeLabel: string;
+  emoji: string;
+  nameKo: string;
+  runQuoteKo: string;
+}
+
+export const MEMBER_TIME_SCHEDULES: readonly MemberTimeScheduleItem[] = [
+  {
+    id: 'yonghwa',
+    hours: [6, 18],
+    minute: 22,
+    timeLabel: '06:22',
+    emoji: '🎸',
+    nameKo: '정용화',
+    runQuoteKo: '같이 에바뛰 해요!! 🏃‍♂️🔥',
+  },
+  {
+    id: 'minhyuk',
+    hours: [6, 18],
+    minute: 28,
+    timeLabel: '06:28',
+    emoji: '🥁',
+    nameKo: '강민혁',
+    runQuoteKo: '오늘도 힘차게 달려요!! 🥁💙',
+  },
+  {
+    id: 'jungshin',
+    hours: [9, 21],
+    minute: 15,
+    timeLabel: '09:15',
+    emoji: '🎸',
+    nameKo: '이정신',
+    runQuoteKo: '끝까지 같이 뛰어보자!! 🏃‍♂️✨',
+  },
+] as const;
+
+export function getKstClockParts(nowMs: number = Date.now()): {
+  dateStr: string;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const kst = new Date(nowMs + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(kst.getUTCDate()).padStart(2, '0');
+  return {
+    dateStr: `${y}-${m}-${d}`,
+    hour: kst.getUTCHours(),
+    minute: kst.getUTCMinutes(),
+    second: kst.getUTCSeconds(),
+  };
+}
+
 export const ADVENT_DAILY_LIST: AdventDailyItem[] = (() => {
   const list: AdventDailyItem[] = [];
   const start = new Date(`${ADVENT_START_DATE}T00:00:00Z`);
@@ -471,14 +531,6 @@ export const ADVENT_DAILY_LIST: AdventDailyItem[] = (() => {
     '황금 마이크 배지',
     '트랙 완주 패치',
     '블루 응원 리본',
-  ];
-  const titlePool = [
-    '설렘 카운트다운',
-    '오늘의 플레이리스트',
-    '그러나, 꽃이었다',
-    '체조경기장 떼창 준비',
-    '드레스코드 체크',
-    '보이스 출석 도장',
   ];
 
   for (let i = 0; i < totalDays; i++) {
@@ -504,11 +556,7 @@ export const ADVENT_DAILY_LIST: AdventDailyItem[] = (() => {
       dow,
       dayNumber: i + 1,
       dDay,
-      title: isDay1
-        ? 'D-DAY 1 에바뛰콘! (02.20)'
-        : isDay2
-        ? 'D-DAY 2 에바뛰콘 파이널! (02.21)'
-        : titlePool[i % titlePool.length],
+      title: '',
       question: isDay1
         ? DAILY_CONCERT_QUESTIONS[86]
         : isDay2
@@ -521,10 +569,7 @@ export const ADVENT_DAILY_LIST: AdventDailyItem[] = (() => {
         : milestone
         ? milestone.label
         : rewardPool[i % rewardPool.length],
-      sampleAnswers: [
-        `${month}월 ${day}일 오늘도 출석 완료! 에바뛰콘까지 같이 달려요 💙`,
-        `D-${dDay === 0 ? 'DAY' : dDay} 매일 질문에 답하면서 기다리는 시간이 제일 설레요!!`,
-      ],
+      sampleAnswers: [],
     });
   }
   return list;
