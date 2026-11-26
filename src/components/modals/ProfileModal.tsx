@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cloud, Lock, LogOut, Shirt, Sparkles, X } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import {
@@ -45,6 +45,14 @@ export function ProfileModal({
 }) {
   const { lang, t } = useI18n();
   const effectiveUnlockCount = isAdminMode ? 999 : answeredCount;
+  const [draftName, setDraftName] = useState<string>(myProfile.name);
+  const [isEditingName, setIsEditingName] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isEditingName) {
+      setDraftName(myProfile.name);
+    }
+  }, [myProfile.name, isEditingName]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md">
@@ -110,8 +118,25 @@ export function ProfileModal({
               <input
                 type="text"
                 maxLength={14}
-                value={myProfile.name}
-                onChange={(e) => setMyProfile((p) => ({ ...p, name: e.target.value }))}
+                value={draftName}
+                onFocus={() => setIsEditingName(true)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDraftName(val);
+                  if (val.trim().length > 0) {
+                    setMyProfile((p) => ({ ...p, name: val }));
+                  }
+                }}
+                onBlur={() => {
+                  setIsEditingName(false);
+                  const trimmed = draftName.trim();
+                  if (trimmed.length > 0) {
+                    setDraftName(trimmed);
+                    setMyProfile((p) => ({ ...p, name: trimmed }));
+                  } else {
+                    setDraftName(myProfile.name);
+                  }
+                }}
                 placeholder={t.profileNicknamePlaceholder}
                 className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-white/15 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-400"
               />

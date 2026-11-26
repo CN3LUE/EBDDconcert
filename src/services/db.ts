@@ -13,18 +13,21 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocFromServer,
   getFirestore,
+  increment,
   onSnapshot,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { ARENA_SECTIONS } from '../constants/arenaSections';
-import { FLOWER_COLORS, INITIAL_MEMOS } from '../constants/plazaData';
+import { FLOWER_COLORS } from '../constants/plazaData';
 import type { PlazaMemo, PublicAdventAnswer, UserProfileState } from '../types/plaza';
 
 export enum OperationType {
@@ -99,6 +102,7 @@ export interface CloudUserPayload {
   myProfile: UserProfileState;
   checkedDates: string[];
   adventAnswers: Record<string, string>;
+  likedMemoIds: string[];
   ebddJumps: number;
   runBestScore: number;
   roofBestScore: number;
@@ -135,6 +139,9 @@ export function loadLocalUserState(fallbackProfile: UserProfileState): CloudUser
         data.adventAnswers && typeof data.adventAnswers === 'object'
           ? (data.adventAnswers as Record<string, string>)
           : {},
+      likedMemoIds: Array.isArray(data.likedMemoIds)
+        ? (data.likedMemoIds.filter((x): x is string => typeof x === 'string')).slice(0, 300)
+        : [],
       ebddJumps: typeof data.ebddJumps === 'number' ? Math.max(0, data.ebddJumps) : 1,
       runBestScore: typeof data.runBestScore === 'number' ? Math.max(0, data.runBestScore) : 0,
       roofBestScore: typeof data.roofBestScore === 'number' ? Math.max(0, data.roofBestScore) : 0,
@@ -209,15 +216,16 @@ export function loadCachedFlowerMemos(): PlazaMemo[] | null {
     const raw = window.localStorage.getItem(FLOWER_MEMOS_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    if (!Array.isArray(parsed)) return null;
     const valid = parsed.filter(
       (item): item is PlazaMemo =>
         Boolean(item) &&
         typeof item === 'object' &&
         typeof (item as PlazaMemo).id === 'string' &&
+        !(item as PlazaMemo).id.startsWith('flower-init-') &&
         typeof (item as PlazaMemo).text === 'string'
     );
-    return valid.length > 0 ? valid : null;
+    return valid;
   } catch {
     return null;
   }
@@ -225,7 +233,36 @@ export function loadCachedFlowerMemos(): PlazaMemo[] | null {
 
 export function saveCachedFlowerMemos(memos: PlazaMemo[]): void {
   try {
-    window.localStorage.setItem(FLOWER_MEMOS_CACHE_KEY, JSON.stringify(memos.slice(0, 300)));
+    const clean = memos.filter((m) => !m.id.startsWith('flower-init-')).slice(0, 300);
+    window.localStorage.setItem(FLOWER_MEMOS_CACHE_KEY, JSON.stringify(clean));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+const ADVENT_QUESTIONS_CACHE_KEY = 'kspo_plaza_advent_questions_v1';
+
+export function loadCachedAdventQuestionOverrides(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(ADVENT_QUESTIONS_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (/^202[67]-\d{2}-\d{2}$/.test(k) && typeof v === 'string' && v.trim()) {
+        result[k] = v;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function saveCachedAdventQuestionOverrides(overrides: Record<string, string>): void {
+  try {
+    window.localStorage.setItem(ADVENT_QUESTIONS_CACHE_KEY, JSON.stringify(overrides));
   } catch {
     // ignore storage quota errors
   }
@@ -342,6 +379,9 @@ export function subscribeUserCloudState(
           data.adventAnswers && typeof data.adventAnswers === 'object'
             ? (data.adventAnswers as Record<string, string>)
             : {};
+        const loadedLikedMemoIds = Array.isArray(data.likedMemoIds)
+          ? (data.likedMemoIds.filter((x): x is string => typeof x === 'string')).slice(0, 300)
+          : [];
         const loadedJumps = typeof data.ebddJumps === 'number' ? data.ebddJumps : 1;
         const loadedRunBest = typeof data.runBestScore === 'number' ? data.runBestScore : 0;
         const loadedRoofBest = typeof data.roofBestScore === 'number' ? data.roofBestScore : 0;
@@ -350,6 +390,7 @@ export function subscribeUserCloudState(
           myProfile: loadedProfile,
           checkedDates: loadedChecked,
           adventAnswers: loadedAnswers,
+          likedMemoIds: loadedLikedMemoIds,
           ebddJumps: loadedJumps,
           runBestScore: loadedRunBest,
           roofBestScore: loadedRoofBest,
@@ -380,6 +421,9 @@ export async function saveUserCloudState(userId: string, payload: CloudUserPaylo
       sanitizedAnswers[k] = v.slice(0, 120);
     }
   }
+  const sanitizedLikedMemoIds = Array.from(
+    new Set(payload.likedMemoIds.filter((id) => typeof id === 'string' && id.length >= 1 && id.length <= 128))
+  ).slice(0, 300);
 
   try {
     await setDoc(
@@ -389,6 +433,7 @@ export async function saveUserCloudState(userId: string, payload: CloudUserPaylo
         myProfile: sanitizeProfile(payload.myProfile),
         checkedDates: sanitizedChecked,
         adventAnswers: sanitizedAnswers,
+        likedMemoIds: sanitizedLikedMemoIds,
         ebddJumps: Math.max(0, Math.min(100000, Math.floor(payload.ebddJumps))),
         runBestScore: Math.max(0, Math.min(1000000, Math.floor(payload.runBestScore))),
         roofBestScore: Math.max(0, Math.min(1000000, Math.floor(payload.roofBestScore))),
@@ -504,9 +549,8 @@ export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): ()
       cloudMemos.sort(
         (a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || b.id.localeCompare(a.id)
       );
-      const merged = [...cloudMemos, ...INITIAL_MEMOS];
-      saveCachedFlowerMemos(merged);
-      onUpdate(merged);
+      saveCachedFlowerMemos(cloudMemos);
+      onUpdate(cloudMemos);
     },
     (err) => {
       try {
@@ -516,6 +560,72 @@ export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): ()
       }
     }
   );
+}
+
+export function subscribeAdventQuestionOverrides(
+  onUpdate: (overrides: Record<string, string>) => void
+): () => void {
+  const path = 'advent_questions';
+  const q = query(collection(db, 'advent_questions'), where('isPublic', '==', true));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const next: Record<string, string> = {};
+      snap.forEach((d) => {
+        const v = d.data() as Record<string, unknown>;
+        if (
+          v &&
+          typeof v.dateStr === 'string' &&
+          /^202[67]-\d{2}-\d{2}$/.test(v.dateStr) &&
+          typeof v.question === 'string' &&
+          v.question.trim()
+        ) {
+          next[v.dateStr] = v.question.trim();
+        }
+      });
+      saveCachedAdventQuestionOverrides(next);
+      onUpdate(next);
+    },
+    (err) => {
+      try {
+        handleFirestoreError(err, OperationType.LIST, path);
+      } catch {
+        // logged structured error
+      }
+    }
+  );
+}
+
+export async function saveAdminAdventQuestion(
+  dateStr: string,
+  question: string,
+  updatedByUid: string
+): Promise<void> {
+  if (!/^202[67]-\d{2}-\d{2}$/.test(dateStr)) return;
+  const safeQ = question.trim().slice(0, 200);
+  if (!safeQ) return;
+  const path = `advent_questions/${dateStr}`;
+  try {
+    await setDoc(doc(db, 'advent_questions', dateStr), {
+      dateStr,
+      question: safeQ,
+      isPublic: true,
+      updatedBy: updatedByUid,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteAdminAdventQuestion(dateStr: string): Promise<void> {
+  if (!/^202[67]-\d{2}-\d{2}$/.test(dateStr)) return;
+  const path = `advent_questions/${dateStr}`;
+  try {
+    await deleteDoc(doc(db, 'advent_questions', dateStr));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
 }
 
 export async function addPublicFlowerMemo(memo: {
@@ -571,17 +681,34 @@ export async function updatePublicFlowerMemo(
   }
 }
 
-export async function togglePublicFlowerMemoLike(
-  id: string,
-  nextLikes: number
-): Promise<void> {
-  const path = `flower_memos/${id}`;
+export async function waterPublicFlowerMemo(
+  memoId: string,
+  userId: string
+): Promise<'liked' | 'already_liked'> {
+  const path = `flower_memos/${memoId}/likes/${userId}`;
+  const likeDocRef = doc(db, 'flower_memos', memoId, 'likes', userId);
   try {
-    await updateDoc(doc(db, 'flower_memos', id), {
-      likes: Math.max(0, nextLikes),
+    const existingLike = await getDoc(likeDocRef);
+    if (existingLike.exists()) {
+      return 'already_liked';
+    }
+    const batch = writeBatch(db);
+    batch.set(likeDocRef, {
+      userId,
+      memoId,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'flower_memos', memoId), {
+      likes: increment(1),
       updatedAt: serverTimestamp(),
     });
+    await batch.commit();
+    return 'liked';
   } catch (err) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'permission-denied') {
+      return 'already_liked';
+    }
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
 }

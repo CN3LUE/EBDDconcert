@@ -14,6 +14,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'hyoleen@penz.kr';
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -57,13 +63,19 @@ service cloud.firestore {
         && (dates.size() == 0 || (dates[0] is string && dates[0].size() == 10));
     }
 
+    function isValidLikedMemoIds(ids) {
+      return ids is list
+        && ids.size() <= 300
+        && (ids.size() == 0 || (ids[0] is string && ids[0].size() >= 1 && ids[0].size() <= 128));
+    }
+
     function isValidUserState(data) {
       return data.keys().hasAll([
           'uid', 'myProfile', 'checkedDates', 'adventAnswers',
           'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'uid', 'myProfile', 'checkedDates', 'adventAnswers',
+          'uid', 'myProfile', 'checkedDates', 'adventAnswers', 'likedMemoIds',
           'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
         ])
         && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
@@ -72,6 +84,7 @@ service cloud.firestore {
         && isValidCheckedDates(data.checkedDates)
         && data.adventAnswers is map
         && data.adventAnswers.size() <= 100
+        && (!('likedMemoIds' in data) || isValidLikedMemoIds(data.likedMemoIds))
         && data.ebddJumps is number && data.ebddJumps >= 0 && data.ebddJumps <= 100000
         && data.runBestScore is number && data.runBestScore >= 0 && data.runBestScore <= 1000000
         && data.roofBestScore is number && data.roofBestScore >= 0 && data.roofBestScore <= 1000000
@@ -87,6 +100,17 @@ service cloud.firestore {
         && data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^202[67]-[0-9]{2}-[0-9]{2}$')
         && data.text is string && data.text.size() >= 1 && data.text.size() <= 120
         && data.createdAt == request.time;
+    }
+
+    function isValidAdventQuestion(data) {
+      return data.keys().hasAll(['dateStr', 'question', 'isPublic', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['dateStr', 'question', 'isPublic', 'updatedBy', 'updatedAt'])
+        && data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^202[67]-[0-9]{2}-[0-9]{2}$')
+        && data.question is string && data.question.size() >= 1 && data.question.size() <= 200
+        && data.isPublic == true
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedBy == request.auth.uid
+        && data.updatedAt == request.time;
     }
 
     function isValidFlowerMemo(data) {
@@ -114,6 +138,15 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function isValidFlowerMemoLike(data) {
+      return data.keys().hasAll(['userId', 'memoId', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'memoId', 'createdAt'])
+        && data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128
+        && data.userId == request.auth.uid
+        && data.memoId is string && isValidId(data.memoId)
+        && data.createdAt == request.time;
+    }
+
     // 1. User private state
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
@@ -122,7 +155,7 @@ service cloud.firestore {
         && isValidUserState(incoming())
         && incoming().uid == existing().uid
         && incoming().diff(existing()).affectedKeys().hasOnly([
-          'myProfile', 'checkedDates', 'adventAnswers',
+          'myProfile', 'checkedDates', 'adventAnswers', 'likedMemoIds',
           'ebddJumps', 'runBestScore', 'roofBestScore', 'updatedAt'
         ]);
       allow delete: if isValidId(userId) && isOwner(userId);
@@ -134,10 +167,24 @@ service cloud.firestore {
       allow list: if isSignedIn() && existing().isPublic == true;
       allow create: if isValidId(answerId) && isSignedIn() && isValidAdventAnswer(incoming());
       allow update: if false;
-      allow delete: if isValidId(answerId) && isSignedIn() && existing().authorUid == request.auth.uid;
+      allow delete: if isValidId(answerId) && isSignedIn() && (existing().authorUid == request.auth.uid || isAdmin());
     }
 
-    // 3. Public Flower memos
+    // 3. Admin-customized daily Advent questions
+    match /advent_questions/{dateStr} {
+      allow get: if isValidId(dateStr) && isSignedIn() && existing().isPublic == true;
+      allow list: if isSignedIn() && existing().isPublic == true;
+      allow create: if isValidId(dateStr) && isAdmin()
+        && isValidAdventQuestion(incoming())
+        && incoming().dateStr == dateStr;
+      allow update: if isValidId(dateStr) && isAdmin()
+        && isValidAdventQuestion(incoming())
+        && incoming().dateStr == existing().dateStr
+        && incoming().diff(existing()).affectedKeys().hasOnly(['question', 'updatedBy', 'updatedAt']);
+      allow delete: if isValidId(dateStr) && isAdmin();
+    }
+
+    // 4. Public Flower memos & one-time per-account watering records
     match /flower_memos/{memoId} {
       allow get: if isValidId(memoId) && isSignedIn() && (existing().isPublic == true || existing().authorUid == request.auth.uid);
       allow list: if isSignedIn() && existing().isPublic == true;
@@ -158,16 +205,29 @@ service cloud.firestore {
             && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'color', 'updatedAt'])
           )
           ||
-          // Action B: Fan toggles like (+1 or -1)
+          // Action B: Fan waters flower once per account (+1 only, backed by likes/{uid})
           (
             incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'updatedAt'])
-            && (incoming().likes == existing().likes + 1 || incoming().likes == existing().likes - 1)
+            && incoming().likes == existing().likes + 1
+            && !exists(/databases/$(database)/documents/flower_memos/$(memoId)/likes/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/flower_memos/$(memoId)/likes/$(request.auth.uid))
           )
         );
-      allow delete: if isValidId(memoId) && isSignedIn() && existing().authorUid == request.auth.uid;
+      allow delete: if isValidId(memoId) && isSignedIn() && (existing().authorUid == request.auth.uid || isAdmin());
+
+      match /likes/{likerUid} {
+        allow get: if isValidId(memoId) && isValidId(likerUid) && isOwner(likerUid);
+        allow create: if isValidId(memoId) && isValidId(likerUid) && isOwner(likerUid)
+          && isValidFlowerMemoLike(incoming())
+          && incoming().memoId == memoId
+          && exists(/databases/$(database)/documents/flower_memos/$(memoId))
+          && getAfter(/databases/$(database)/documents/flower_memos/$(memoId)).data.likes
+             == get(/databases/$(database)/documents/flower_memos/$(memoId)).data.likes + 1;
+        allow update, delete: if false;
+      }
     }
 
-    // 4. Connection check endpoint
+    // 5. Connection check endpoint
     match /test/{docId} {
       allow get: if docId == 'connection';
     }

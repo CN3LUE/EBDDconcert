@@ -42,7 +42,6 @@ import {
   getKstTodayStr,
   getLanePosition,
   getLiveRadioState,
-  INITIAL_MEMOS,
   LANE_RADII,
   MAX_ROOM_CAPACITY,
   OUTFIT_OPTIONS,
@@ -54,20 +53,24 @@ import {
 import {
   addPublicAdventAnswer,
   addPublicFlowerMemo,
+  deleteAdminAdventQuestion,
   deletePublicFlowerMemo,
   initFirebaseAuth,
+  loadCachedAdventQuestionOverrides,
   loadCachedFlowerMemos,
   loadLocalUserState,
+  saveAdminAdventQuestion,
   saveCachedFlowerMemos,
   saveLocalUserState,
   saveUserCloudState,
   signInWithGoogle,
   signOutFirebase,
+  subscribeAdventQuestionOverrides,
   subscribeFlowerMemos,
   subscribePublicAdventAnswers,
   subscribeUserCloudState,
-  togglePublicFlowerMemoLike,
   updatePublicFlowerMemo,
+  waterPublicFlowerMemo,
 } from './services/db';
 import {
   createAlbumSpineTexture,
@@ -307,15 +310,32 @@ export function App() {
   // --- 「그러나, 꽃이었다」 메모 ---
   const cachedMemosRef = useRef<PlazaMemo[] | null>(loadCachedFlowerMemos());
   const [memos, setMemos] = useState<PlazaMemo[]>(
-    () => cachedMemosRef.current ?? INITIAL_MEMOS
+    () => cachedMemosRef.current ?? []
   );
   const [memosReady, setMemosReady] = useState<boolean>(
     () => cachedMemosRef.current !== null
   );
-  const memosRef = useRef<PlazaMemo[]>(memos);
+  const [likedMemoIds, setLikedMemoIds] = useState<string[]>(
+    () => initialLocalStateRef.current?.likedMemoIds ?? []
+  );
+  const likedMemoIdsRef = useRef<string[]>(likedMemoIds);
   useEffect(() => {
-    memosRef.current = memos;
-  }, [memos]);
+    likedMemoIdsRef.current = likedMemoIds;
+  }, [likedMemoIds]);
+
+  const displayMemos = useMemo(
+    () =>
+      memos.map((m) => ({
+        ...m,
+        likedByMe: m.likedByMe || likedMemoIds.includes(m.id),
+      })),
+    [memos, likedMemoIds]
+  );
+
+  const memosRef = useRef<PlazaMemo[]>(displayMemos);
+  useEffect(() => {
+    memosRef.current = displayMemos;
+  }, [displayMemos]);
 
   const [selectedMemo, setSelectedMemo] = useState<PlazaMemo | null>(null);
   const [newMemoText, setNewMemoText] = useState<string>('');
@@ -339,6 +359,9 @@ export function App() {
   const [adventAnswerInput, setAdventAnswerInput] = useState<string>('');
   const [adventAnswers, setAdventAnswers] = useState<Record<string, string>>(
     () => initialLocalStateRef.current?.adventAnswers ?? {}
+  );
+  const [adventQuestionOverrides, setAdventQuestionOverrides] = useState<Record<string, string>>(
+    () => loadCachedAdventQuestionOverrides()
   );
 
   // --- 모달 & 미니게임 & 오디오 ---
@@ -382,6 +405,7 @@ export function App() {
         setMyProfile(loaded.myProfile);
         setCheckedDates(loaded.checkedDates);
         setAdventAnswers(loaded.adventAnswers);
+        setLikedMemoIds(loaded.likedMemoIds);
         setEbddJumps(loaded.ebddJumps);
         setRunBestScore(loaded.runBestScore);
         setRoofBestScore(loaded.roofBestScore);
@@ -390,6 +414,7 @@ export function App() {
     );
 
     const unsubAdventPublic = subscribePublicAdventAnswers(setPublicAdventAnswers);
+    const unsubAdventQuestions = subscribeAdventQuestionOverrides(setAdventQuestionOverrides);
     const unsubMemos = subscribeFlowerMemos((nextMemos) => {
       setMemos(nextMemos);
       setMemosReady(true);
@@ -398,6 +423,7 @@ export function App() {
     return () => {
       unsubUser();
       unsubAdventPublic();
+      unsubAdventQuestions();
       unsubMemos();
     };
   }, [user]);
@@ -408,6 +434,7 @@ export function App() {
       myProfile,
       checkedDates,
       adventAnswers,
+      likedMemoIds,
       ebddJumps,
       runBestScore,
       roofBestScore,
@@ -3255,6 +3282,9 @@ export function App() {
       createdAtMs: nowMs,
     };
 
+    setLikedMemoIds((prev) =>
+      prev.includes(localId) ? prev : [...prev, localId].slice(-300)
+    );
     setMemos((prev) => {
       const next = [created, ...prev];
       saveCachedFlowerMemos(next);
@@ -3279,7 +3309,12 @@ export function App() {
       })
         .then((cloudId) => {
           if (cloudId) {
-            setMemos((prev) => prev.map((m) => (m.id === localId ? { ...m, id: cloudId } : m)));
+            setLikedMemoIds((prev) =>
+              prev.includes(cloudId) ? prev : [...prev, cloudId].slice(-300)
+            );
+            setMemos((prev) =>
+              prev.map((m) => (m.id === localId ? { ...m, id: cloudId } : m))
+            );
           }
         })
         .catch((err) => console.error('Save flower memo error:', err));
@@ -3297,7 +3332,11 @@ export function App() {
   const handleUpdateMemo = (id: string, text: string, color: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    setMemos((prev) => prev.map((m) => (m.id === id ? { ...m, text: trimmed, color } : m)));
+    setMemos((prev) => {
+      const next = prev.map((m) => (m.id === id ? { ...m, text: trimmed, color } : m));
+      saveCachedFlowerMemos(next);
+      return next;
+    });
     setSelectedMemo((prev) => (prev && prev.id === id ? { ...prev, text: trimmed, color } : prev));
     showToast('🌸 응원 꽃 문구가 수정되었습니다!');
 
@@ -3319,9 +3358,19 @@ export function App() {
   };
 
   const handleDeleteMemo = (id: string) => {
-    setMemos((prev) => prev.filter((m) => m.id !== id));
+    const target = memosRef.current.find((m) => m.id === id);
+    const isMine = Boolean(target?.authorId && myWriterIds.includes(target.authorId));
+    setMemos((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      saveCachedFlowerMemos(next);
+      return next;
+    });
     setSelectedMemo((prev) => (prev && prev.id === id ? null : prev));
-    showToast('🗑️ 작성한 꽃 응원 문구를 삭제했습니다.');
+    showToast(
+      isAdminMode && !isMine
+        ? '🗑️ 관리자 권한으로 꽃 메모를 삭제했습니다.'
+        : '🗑️ 작성한 꽃 응원 문구를 삭제했습니다.'
+    );
 
     if (user && !id.startsWith('flower-')) {
       deletePublicFlowerMemo(id).catch((err) => console.error('Delete flower memo error:', err));
@@ -3338,15 +3387,20 @@ export function App() {
 
   const handleToggleMemoLike = (id: string) => {
     const target = memosRef.current.find((m) => m.id === id);
-    const nextLikes = target ? Math.max(0, target.likedByMe ? target.likes - 1 : target.likes + 1) : 1;
+    if (!target) return;
+    if (target.likedByMe || likedMemoIdsRef.current.includes(id)) {
+      showToast('🌸 이미 물주기 응원을 완료한 꽃입니다!');
+      return;
+    }
 
+    setLikedMemoIds((prev) => (prev.includes(id) ? prev : [...prev, id].slice(-300)));
     setMemos((prev) =>
       prev.map((m) =>
         m.id === id
           ? {
               ...m,
-              likes: m.likedByMe ? m.likes - 1 : m.likes + 1,
-              likedByMe: !m.likedByMe,
+              likes: m.likes + 1,
+              likedByMe: true,
             }
           : m
       )
@@ -3355,16 +3409,57 @@ export function App() {
       prev && prev.id === id
         ? {
             ...prev,
-            likes: prev.likedByMe ? prev.likes - 1 : prev.likes + 1,
-            likedByMe: !prev.likedByMe,
+            likes: prev.likes + 1,
+            likedByMe: true,
           }
         : prev
     );
+    spawnFloatingParticles('#38bdf8');
+    showToast('💧 응원 꽃에 물을 주었습니다! (+1)');
 
     if (user && !id.startsWith('flower-')) {
-      togglePublicFlowerMemoLike(id, nextLikes).catch((err) =>
-        console.error('Toggle flower memo like error:', err)
-      );
+      waterPublicFlowerMemo(id, user.uid)
+        .then((res) => {
+          if (res === 'already_liked') {
+            setMemos((prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, likes: Math.max(1, target.likes), likedByMe: true } : m
+              )
+            );
+            showToast('🌸 이미 물주기 응원을 완료한 꽃입니다!');
+          }
+        })
+        .catch((err) => console.error('Water flower memo error:', err));
+    }
+  };
+
+  const handleSaveAdminQuestion = (dateStr: string, newQuestion: string) => {
+    const trimmed = newQuestion.trim().slice(0, 200);
+    if (!trimmed) return;
+    setAdventQuestionOverrides((prev) => ({ ...prev, [dateStr]: trimmed }));
+    if (user) {
+      saveAdminAdventQuestion(dateStr, trimmed, user.uid)
+        .then(() => showToast('✅ 어드벤트 질문이 수정되어 모두에게 적용되었습니다!'))
+        .catch((err) => {
+          console.error('Save admin question error:', err);
+          showToast('⚠️ 질문 저장 권한을 확인해주세요.');
+        });
+    }
+  };
+
+  const handleResetAdminQuestion = (dateStr: string) => {
+    setAdventQuestionOverrides((prev) => {
+      const next = { ...prev };
+      delete next[dateStr];
+      return next;
+    });
+    if (user) {
+      deleteAdminAdventQuestion(dateStr)
+        .then(() => showToast('↩️ 기본 어드벤트 질문으로 복원되었습니다.'))
+        .catch((err) => {
+          console.error('Reset admin question error:', err);
+          showToast('⚠️ 질문 초기화 권한을 확인해주세요.');
+        });
     }
   };
 
@@ -3936,6 +4031,9 @@ export function App() {
           onCheckInAdvent={handleCheckInAdvent}
           onShowToast={showToast}
           isAdminMode={isAdminMode}
+          questionOverrides={adventQuestionOverrides}
+          onSaveAdminQuestion={handleSaveAdminQuestion}
+          onResetAdminQuestion={handleResetAdminQuestion}
           onClose={() => setActiveModal('none')}
         />
       )}
@@ -3943,7 +4041,7 @@ export function App() {
       {/* 모달 2: 「그러나, 꽃이었다」 메모장 */}
       {activeModal === 'memos' && (
         <FlowerMemosModal
-          memos={memos}
+          memos={displayMemos}
           myWriterIds={myWriterIds}
           selectedMemo={selectedMemo}
           newMemoText={newMemoText}
@@ -3954,6 +4052,7 @@ export function App() {
           onUpdateMemo={handleUpdateMemo}
           onDeleteMemo={handleDeleteMemo}
           onToggleMemoLike={handleToggleMemoLike}
+          isAdminMode={isAdminMode}
           onMoveToMemo={(memo) => {
             if (viewMode === 'arena') switchViewMode('plaza');
             isTrackRunningRef.current = false;

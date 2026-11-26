@@ -194,12 +194,12 @@ export const HAIR_OPTIONS: Array<{ id: HairStyle; name: string; desc: string }> 
 ];
 
 export const LIGHTSTICK_PALETTE = [
-  { name: '로열 블루', hex: '#2563eb', unlockDay: 1 },
-  { name: '레드', hex: '#ef4444', unlockDay: 1 },
-  { name: '스카이 시안', hex: '#38bdf8', unlockDay: 9 },
-  { name: '아이스 화이트', hex: '#e0f2fe', unlockDay: 10 },
-  { name: '선셋 골드', hex: '#fbbf24', unlockDay: 11 },
-  { name: '체리 블라썸', hex: '#f472b6', unlockDay: 12 },
+  { name: '블루', hex: '#2563eb', unlockDay: 1 },
+  { name: '스카이블루', hex: '#38bdf8', unlockDay: 9 },
+  { name: '화이트', hex: '#e0f2fe', unlockDay: 10 },
+  { name: '골드', hex: '#fbbf24', unlockDay: 11 },
+  { name: '핑크', hex: '#f472b6', unlockDay: 12 },
+  { name: '레드', hex: '#ef4444', unlockDay: 13 },
 ];
 
 // 어드벤트 질문 답변 누적 횟수에 따라 순차 획득하는 착용 MD 아이템 로드맵
@@ -217,10 +217,11 @@ export const ADVENT_UNLOCK_MILESTONES: Array<{
   { day: 6, label: '🧢 네이비 볼캡', shortName: '딥네이비 볼캡', icon: '🧢' },
   { day: 7, label: '👕 네이비 티셔츠', shortName: '네이비 투어 티셔츠', icon: '👕' },
   { day: 8, label: '👕 스카이블루 티셔츠', shortName: '스카이블루 보이스 티', icon: '👕' },
-  { day: 9, label: '✨ 응원봉 · 스카이 시안 컬러', shortName: '응원봉 스카이 시안', icon: '✨' },
-  { day: 10, label: '❄️ 응원봉 · 아이스 화이트 컬러', shortName: '응원봉 아이스 화이트', icon: '❄️' },
-  { day: 11, label: '🌟 응원봉 · 선셋 골드 컬러', shortName: '응원봉 선셋 골드', icon: '🌟' },
-  { day: 12, label: '🌸 응원봉 · 체리 블라썸 컬러', shortName: '응원봉 체리 블라썸', icon: '🌸' },
+  { day: 9, label: '✨ 뛰봉 · 스카이블루', shortName: '뛰봉 스카이블루', icon: '✨' },
+  { day: 10, label: '❄️ 뛰봉 · 화이트', shortName: '뛰봉 화이트', icon: '❄️' },
+  { day: 11, label: '🌟 뛰봉 · 골드', shortName: '뛰봉 골드', icon: '🌟' },
+  { day: 12, label: '🌸 뛰봉 · 핑크', shortName: '뛰봉 핑크', icon: '🌸' },
+  { day: 13, label: '❤️ 뛰봉 · 레드', shortName: '뛰봉 레드', icon: '❤️' },
 ];
 
 export const OUTFIT_UNLOCK_DAY: Record<OutfitStyle, number> = {
@@ -256,56 +257,7 @@ export const FLOWER_COLORS = [
   { name: '핑크', hex: '#f472b6' },
 ];
 
-export const INITIAL_MEMOS: PlazaMemo[] = [
-  {
-    id: 'flower-init-1',
-    author: '블루웨이브',
-    seatZone: 'FLOOR 에 (A구역)',
-    text: '체조경기장 전석 매진ㅠㅠ 180도 돌출무대도 심장 터질 것 같아요!! 다음번엔 360도 콘서트 가자 💙',
-    color: '#38bdf8',
-    x: -5.4,
-    z: 10.2,
-    likes: 24,
-    likedByMe: false,
-    createdAt: '10분 전',
-  },
-  {
-    id: 'flower-init-2',
-    author: '꽃길만걷자',
-    seatZone: '1F S석 8구역',
-    text: '그러나, 꽃이었다 라이브로 들으면 무조건 울 것 같아요 🌸 씨엔블루 사랑해!',
-    color: '#f472b6',
-    x: 4.8,
-    z: 9.6,
-    likes: 19,
-    likedByMe: false,
-    createdAt: '25분 전',
-  },
-  {
-    id: 'flower-init-3',
-    author: '앵콜외쳐라',
-    seatZone: 'FLOOR 바 (B구역)',
-    text: '다 같이 목 쉬도록 떼창해요 🔥',
-    color: '#facc15',
-    x: 2.2,
-    z: 16.8,
-    likes: 15,
-    likedByMe: false,
-    createdAt: '1시간 전',
-  },
-  {
-    id: 'flower-init-4',
-    author: '씨엔블루뽀에버',
-    seatZone: '2F A석 33구역',
-    text: '2층에서도 에바뛰 레쭈고 KEEP DREAMIN KEEP RUNNIN 💎',
-    color: '#a78bfa',
-    x: -4.2,
-    z: 15.6,
-    likes: 31,
-    likedByMe: false,
-    createdAt: '2시간 전',
-  },
-];
+export const INITIAL_MEMOS: PlazaMemo[] = [];
 
 export const NPC_NAMES = [
   '나잇러너',

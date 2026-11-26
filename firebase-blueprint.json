@@ -22,6 +22,10 @@
           "type": "object",
           "description": "Map of YYYY-MM-DD to user's private answer note."
         },
+        "likedMemoIds": {
+          "type": "array",
+          "description": "List of flower memo IDs the user has already watered (max 300)."
+        },
         "ebddJumps": {
           "type": "number"
         },
@@ -159,6 +163,68 @@
         "updatedAt"
       ]
     },
+    "AdventQuestion": {
+      "title": "AdventQuestion",
+      "description": "Admin-customized daily Advent question override visible to all fans.",
+      "type": "object",
+      "properties": {
+        "dateStr": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^202[67]-[0-9]{2}-[0-9]{2}$"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "dateStr",
+        "question",
+        "isPublic",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "FlowerMemoLike": {
+      "title": "FlowerMemoLike",
+      "description": "Single per-account watering record preventing duplicate likes on a flower memo.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memoId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "memoId",
+        "createdAt"
+      ]
+    },
     "ConnectionTest": {
       "title": "ConnectionTest",
       "description": "Read-only startup connection probe document.",
@@ -189,6 +255,18 @@
         "$ref": "#/entities/FlowerMemo"
       },
       "description": "Publicly listed 3D flower cheer memos placed in the plaza."
+    },
+    "/flower_memos/{memoId}/likes/{likerUid}": {
+      "schema": {
+        "$ref": "#/entities/FlowerMemoLike"
+      },
+      "description": "One-time per-account watering record for each flower memo."
+    },
+    "/advent_questions/{dateStr}": {
+      "schema": {
+        "$ref": "#/entities/AdventQuestion"
+      },
+      "description": "Admin-customized daily Advent questions readable by all fans."
     },
     "/test/{docId}": {
       "schema": {

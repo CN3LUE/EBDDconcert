@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -7,6 +7,8 @@ import {
   Footprints,
   Lock,
   MessageSquare,
+  Pencil,
+  RotateCcw,
   Users,
   X,
 } from 'lucide-react';
@@ -43,6 +45,9 @@ export function AdventModal({
   onCheckInAdvent,
   onShowToast,
   isAdminMode = false,
+  questionOverrides = {},
+  onSaveAdminQuestion,
+  onResetAdminQuestion,
   onClose,
 }: {
   todayKstStr: string;
@@ -67,18 +72,34 @@ export function AdventModal({
   onCheckInAdvent: (dateStr: string) => void;
   onShowToast: (msg: string) => void;
   isAdminMode?: boolean;
+  questionOverrides?: Record<string, string>;
+  onSaveAdminQuestion?: (dateStr: string, newQuestion: string) => void;
+  onResetAdminQuestion?: (dateStr: string) => void;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
   const [peerFilterMode, setPeerFilterMode] = useState<'all' | 'selected'>('all');
   const [expandedPeerDates, setExpandedPeerDates] = useState<Record<string, boolean>>({});
+  const [isEditingQuestion, setIsEditingQuestion] = useState<boolean>(false);
+  const [questionDraft, setQuestionDraft] = useState<string>('');
 
   const getQuestionIdx = (item: AdventDailyItem) => {
     if (item.dateStr === '2027-02-20') return 86;
     if (item.dateStr === '2027-02-21') return 87;
     return (item.dayNumber - 1) % 86;
   };
-  const localizedQuestion = getLocalizedQuestion(getQuestionIdx(currentAdventObj), lang);
+  const getDisplayQuestion = (item: AdventDailyItem) => {
+    const custom = questionOverrides[item.dateStr];
+    if (custom && custom.trim()) return custom.trim();
+    return getLocalizedQuestion(getQuestionIdx(item), lang);
+  };
+  const localizedQuestion = getDisplayQuestion(currentAdventObj);
+  const hasQuestionOverride = Boolean(questionOverrides[currentAdventObj.dateStr]);
+
+  useEffect(() => {
+    setIsEditingQuestion(false);
+    setQuestionDraft('');
+  }, [currentAdventObj.dateStr, isAdminMode]);
 
   // 날짜별로 묶인 익명 답변 목록 (질문 1개당 답변들이 드롭다운 아래 줄글로 나열)
   const { groupedPeerDays, totalSharedCount } = useMemo(() => {
@@ -478,12 +499,77 @@ export function AdventModal({
                         </div>
 
                         <div className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2">
-                          <div className="text-[11px] font-extrabold text-sky-400">
-                            {t.adventTodayQuestion}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[11px] font-extrabold text-sky-400">
+                              {t.adventTodayQuestion}
+                            </div>
+                            {isAdminMode && !isEditingQuestion && (
+                              <div className="flex items-center gap-1">
+                                {hasQuestionOverride && onResetAdminQuestion && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onResetAdminQuestion(currentAdventObj.dateStr)}
+                                    title="기본 질문으로 복원"
+                                    className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-[10px] font-bold text-slate-300 flex items-center gap-1 transition"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                    <span>초기화</span>
+                                  </button>
+                                )}
+                                {onSaveAdminQuestion && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuestionDraft(localizedQuestion);
+                                      setIsEditingQuestion(true);
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/50 text-[10px] font-extrabold text-amber-200 flex items-center gap-1 transition"
+                                  >
+                                    <Pencil className="w-2.5 h-2.5" />
+                                    <span>질문 수정</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs sm:text-sm font-bold text-white leading-relaxed">
-                            Q. {localizedQuestion}
-                          </p>
+                          {isAdminMode && isEditingQuestion ? (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={2}
+                                maxLength={200}
+                                value={questionDraft}
+                                onChange={(e) => setQuestionDraft(e.target.value)}
+                                placeholder="수정할 질문을 입력하세요 (최대 200자)"
+                                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-amber-400/50 text-xs text-white focus:outline-none resize-none"
+                              />
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEditingQuestion(false)}
+                                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-slate-200 transition"
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const trimmed = questionDraft.trim();
+                                    if (!trimmed || !onSaveAdminQuestion) return;
+                                    onSaveAdminQuestion(currentAdventObj.dateStr, trimmed);
+                                    setIsEditingQuestion(false);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-[11px] font-extrabold text-slate-950 flex items-center gap-1 transition"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>질문 저장</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs sm:text-sm font-bold text-white leading-relaxed">
+                              Q. {localizedQuestion}
+                            </p>
+                          )}
                           {adventAnswers[currentAdventObj.dateStr] && (
                             <div className="mt-2 p-2.5 rounded-lg bg-blue-600/20 border border-sky-400/30 text-xs text-sky-100">
                               <span className="font-bold text-sky-300">{t.adventMyRecordPrefix}</span>
@@ -538,7 +624,7 @@ export function AdventModal({
                 </div>
               ) : (
                 recordedDiaryList.map((item) => {
-                  const qText = getLocalizedQuestion(getQuestionIdx(item), lang);
+                  const qText = getDisplayQuestion(item);
                   const dLabel =
                     item.dateStr === '2027-02-20'
                       ? 'D-DAY 1'
@@ -604,7 +690,7 @@ export function AdventModal({
               ) : (
                 <div className="space-y-2">
                   {visiblePeerGroups.map((group, idx) => {
-                    const qText = getLocalizedQuestion(getQuestionIdx(group.dayObj), lang);
+                    const qText = getDisplayQuestion(group.dayObj);
                     const dLabel =
                       group.dateStr === '2027-02-20'
                         ? 'D-DAY 1'

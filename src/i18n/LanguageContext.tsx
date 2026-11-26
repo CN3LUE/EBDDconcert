@@ -401,12 +401,12 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     profileColorLockToast: (day, colorName) =>
       `🔒 어드벤트 ${day}회차 질문에 답변하면 [${colorName}] 뛰봉 컬러가 열립니다!`,
     profileColorNames: {
-      '#2563eb': '로열 블루',
+      '#2563eb': '블루',
+      '#38bdf8': '스카이블루',
+      '#e0f2fe': '화이트',
+      '#fbbf24': '골드',
+      '#f472b6': '핑크',
       '#ef4444': '레드',
-      '#38bdf8': '스카이 시안',
-      '#e0f2fe': '아이스 화이트',
-      '#fbbf24': '선셋 골드',
-      '#f472b6': '체리 블라썸',
     },
   },
   en: {
@@ -618,12 +618,12 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     profileColorLockToast: (day, colorName) =>
       `🔒 Answer #${day} Advent question to unlock [${colorName}] Ttuibong glow!`,
     profileColorNames: {
-      '#2563eb': 'Royal Blue',
+      '#2563eb': 'Blue',
+      '#38bdf8': 'Sky Blue',
+      '#e0f2fe': 'White',
+      '#fbbf24': 'Gold',
+      '#f472b6': 'Pink',
       '#ef4444': 'Red',
-      '#38bdf8': 'Sky Cyan',
-      '#e0f2fe': 'Ice White',
-      '#fbbf24': 'Sunset Gold',
-      '#f472b6': 'Cherry Blossom',
     },
   },
   zh: {
@@ -830,12 +830,12 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     profileColorLockToast: (day, colorName) =>
       `🔒 回答第${day}次倒数日历提问即可解锁 [${colorName}] 跳棒灯光！`,
     profileColorNames: {
-      '#2563eb': '皇家蓝',
-      '#ef4444': '炽焰红',
-      '#38bdf8': '天空青',
-      '#e0f2fe': '冰晶白',
-      '#fbbf24': '落日金',
-      '#f472b6': '樱花粉',
+      '#2563eb': '蓝色',
+      '#38bdf8': '天蓝',
+      '#e0f2fe': '白色',
+      '#fbbf24': '金色',
+      '#f472b6': '粉色',
+      '#ef4444': '红色',
     },
   },
   ja: {
@@ -1047,12 +1047,12 @@ export const UI_TRANSLATIONS: Record<AppLang, TranslationDict> = {
     profileColorLockToast: (day, colorName) =>
       `🔒 アドベント${day}回目の質問に答えると [${colorName}] カラーが解放されます！`,
     profileColorNames: {
-      '#2563eb': 'ロイヤルブルー',
+      '#2563eb': 'ブルー',
+      '#38bdf8': 'スカイブルー',
+      '#e0f2fe': 'ホワイト',
+      '#fbbf24': 'ゴールド',
+      '#f472b6': 'ピンク',
       '#ef4444': 'レッド',
-      '#38bdf8': 'スカイシアン',
-      '#e0f2fe': 'アイスホワイト',
-      '#fbbf24': 'サンセットゴールド',
-      '#f472b6': 'チェリーブロッサム',
     },
   },
 };
