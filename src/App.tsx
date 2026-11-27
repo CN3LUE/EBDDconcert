@@ -57,20 +57,23 @@ import {
   deleteAdminAdventQuestion,
   deletePublicAdventAnswer,
   deletePublicFlowerMemo,
+  fetchAdventQuestionOverrides,
+  fetchFlowerMemos,
+  fetchPublicAdventAnswers,
+  fetchUserCloudState,
   initFirebaseAuth,
   loadCachedAdventQuestionOverrides,
   loadCachedFlowerMemos,
+  loadCachedPublicAdventAnswers,
   loadLocalUserState,
   saveAdminAdventQuestion,
+  saveCachedAdventQuestionOverrides,
   saveCachedFlowerMemos,
+  saveCachedPublicAdventAnswers,
   saveLocalUserState,
   saveUserCloudState,
   signInWithGoogle,
   signOutFirebase,
-  subscribeAdventQuestionOverrides,
-  subscribeFlowerMemos,
-  subscribePublicAdventAnswers,
-  subscribeUserCloudState,
   updatePublicFlowerMemo,
   waterPublicFlowerMemo,
 } from './services/db';
@@ -121,7 +124,11 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [cloudSynced, setCloudSynced] = useState<boolean>(false);
   const [authFallbackNeeded, setAuthFallbackNeeded] = useState<boolean>(false);
-  const [publicAdventAnswers, setPublicAdventAnswers] = useState<PublicAdventAnswer[]>([]);
+  const [publicAdventAnswers, setPublicAdventAnswers] = useState<PublicAdventAnswer[]>(() =>
+    loadCachedPublicAdventAnswers()
+  );
+  const [isRefreshingMemos, setIsRefreshingMemos] = useState<boolean>(false);
+  const [isRefreshingAdventPeers, setIsRefreshingAdventPeers] = useState<boolean>(false);
   const lastSavedSnapshotRef = useRef<string>('');
   const [adminModeEnabled, setAdminModeEnabled] = useState<boolean>(() => {
     try {
@@ -414,40 +421,66 @@ export function App() {
     return initFirebaseAuth(setUser, setAuthFallbackNeeded);
   }, []);
 
-  // 2) 인증 완료 후 Firestore 실시간 동기화
+  // 2) 인증 완료 후 캐시 우선 동기화 (무료 읽기 할당량 절감을 위해 실시간 전체 구독 대신 TTL 캐시 사용)
   useEffect(() => {
     if (!user) return undefined;
+    let cancelled = false;
 
-    const unsubUser = subscribeUserCloudState(
-      user.uid,
-      myProfileRef.current,
-      (loaded) => {
-        lastSavedSnapshotRef.current = JSON.stringify(loaded);
-        setMyProfile(loaded.myProfile);
-        setCheckedDates(loaded.checkedDates);
-        setAdventAnswers(loaded.adventAnswers);
-        setLikedMemoIds(loaded.likedMemoIds);
-        setEbddJumps(loaded.ebddJumps);
-        setRunBestScore(loaded.runBestScore);
-        setRoofBestScore(loaded.roofBestScore);
-      },
-      () => setCloudSynced(true)
-    );
+    fetchUserCloudState(user.uid, myProfileRef.current, { force: !user.isAnonymous })
+      .then(({ loaded }) => {
+        if (cancelled) return;
+        if (loaded) {
+          lastSavedSnapshotRef.current = JSON.stringify(loaded);
+          setMyProfile(loaded.myProfile);
+          setCheckedDates(loaded.checkedDates);
+          setAdventAnswers(loaded.adventAnswers);
+          setLikedMemoIds(loaded.likedMemoIds);
+          setEbddJumps(loaded.ebddJumps);
+          setRunBestScore(loaded.runBestScore);
+          setRoofBestScore(loaded.roofBestScore);
+        }
+        setCloudSynced(true);
+      })
+      .catch(() => {
+        if (!cancelled) setCloudSynced(true);
+      });
 
-    const unsubAdventPublic = subscribePublicAdventAnswers(setPublicAdventAnswers);
-    const unsubAdventQuestions = subscribeAdventQuestionOverrides(setAdventQuestionOverrides);
-    const unsubMemos = subscribeFlowerMemos((nextMemos) => {
-      setMemos(nextMemos);
-      setMemosReady(true);
-    });
+    fetchFlowerMemos()
+      .then(({ memos: nextMemos }) => {
+        if (cancelled) return;
+        setMemos(nextMemos);
+        setMemosReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setMemosReady(true);
+      });
 
     return () => {
-      unsubUser();
-      unsubAdventPublic();
-      unsubAdventQuestions();
-      unsubMemos();
+      cancelled = true;
     };
   }, [user]);
+
+  // 2-2) 어드벤트 모달이 열릴 때만 질문 커스텀·공유 답변 지연 로딩 (일반 입장 시 읽기 0회)
+  useEffect(() => {
+    if (!user || activeModal !== 'advent') return undefined;
+    let cancelled = false;
+
+    fetchAdventQuestionOverrides()
+      .then(({ overrides }) => {
+        if (!cancelled) setAdventQuestionOverrides(overrides);
+      })
+      .catch(() => undefined);
+
+    fetchPublicAdventAnswers()
+      .then(({ items }) => {
+        if (!cancelled) setPublicAdventAnswers(items);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, activeModal]);
 
   // 3) 내 프로필·어드벤트 답변·미니게임 기록 로컬 + 클라우드 자동 저장
   useEffect(() => {
@@ -471,10 +504,20 @@ export function App() {
       saveUserCloudState(user.uid, payload).catch((err) =>
         console.error('Save user state error:', err)
       );
-    }, 350);
+    }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [user, cloudSynced, myProfile, checkedDates, adventAnswers, ebddJumps, runBestScore, roofBestScore]);
+  }, [
+    user,
+    cloudSynced,
+    myProfile,
+    checkedDates,
+    adventAnswers,
+    likedMemoIds,
+    ebddJumps,
+    runBestScore,
+    roofBestScore,
+  ]);
 
   // 어드벤트 질문 답변 누적 개수 -> 착용 가능한 MD 아이템 해금 기준
   const answeredCount = useMemo(
@@ -3743,10 +3786,47 @@ export function App() {
     }
   };
 
+  const handleRefreshFlowerMemos = useCallback(() => {
+    setIsRefreshingMemos(true);
+    fetchFlowerMemos({ force: true })
+      .then(({ memos: nextMemos, quotaExceeded }) => {
+        setMemos(nextMemos);
+        setMemosReady(true);
+        showToast(
+          quotaExceeded
+            ? '⚠️ 서버 일일 읽기 한도에 도달해 임시 저장된 꽃 목록을 표시합니다.'
+            : '🌸 최신 응원 꽃 목록을 불러왔습니다!'
+        );
+      })
+      .finally(() => setIsRefreshingMemos(false));
+  }, [showToast]);
+
+  const handleRefreshAdventPeers = useCallback(() => {
+    setIsRefreshingAdventPeers(true);
+    Promise.all([
+      fetchPublicAdventAnswers({ force: true }),
+      fetchAdventQuestionOverrides({ force: true }),
+    ])
+      .then(([answersRes, questionsRes]) => {
+        setPublicAdventAnswers(answersRes.items);
+        setAdventQuestionOverrides(questionsRes.overrides);
+        showToast(
+          answersRes.quotaExceeded || questionsRes.quotaExceeded
+            ? '⚠️ 서버 일일 읽기 한도에 도달해 임시 저장된 기록을 표시합니다.'
+            : '✨ 최신 어드벤트 기록을 불러왔습니다!'
+        );
+      })
+      .finally(() => setIsRefreshingAdventPeers(false));
+  }, [showToast]);
+
   const handleSaveAdminQuestion = (dateStr: string, newQuestion: string) => {
     const trimmed = newQuestion.trim().slice(0, 200);
     if (!trimmed) return;
-    setAdventQuestionOverrides((prev) => ({ ...prev, [dateStr]: trimmed }));
+    setAdventQuestionOverrides((prev) => {
+      const next = { ...prev, [dateStr]: trimmed };
+      saveCachedAdventQuestionOverrides(next);
+      return next;
+    });
     if (user) {
       saveAdminAdventQuestion(dateStr, trimmed, user.uid)
         .then(() => showToast('✅ 어드벤트 질문이 수정되어 모두에게 적용되었습니다!'))
@@ -3761,6 +3841,7 @@ export function App() {
     setAdventQuestionOverrides((prev) => {
       const next = { ...prev };
       delete next[dateStr];
+      saveCachedAdventQuestionOverrides(next);
       return next;
     });
     if (user) {
@@ -3774,7 +3855,11 @@ export function App() {
   };
 
   const handleDeletePublicAdventAnswer = (id: string) => {
-    setPublicAdventAnswers((prev) => prev.filter((item) => item.id !== id));
+    setPublicAdventAnswers((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveCachedPublicAdventAnswers(next);
+      return next;
+    });
     showToast('🗑️ 관리자 권한으로 해당 어드벤트 답변 기록을 삭제했습니다.');
     if (user && !id.startsWith('local-') && !id.startsWith('sample-')) {
       deletePublicAdventAnswer(id).catch((err) => {
@@ -3812,20 +3897,35 @@ export function App() {
       setAdventAnswers(nextAnswers);
       setAdventAnswerInput('');
 
-      setPublicAdventAnswers((prev) => [
-        {
-          id: `local-${Date.now()}`,
-          dateStr,
-          text: answerText,
-          createdAt: Date.now(),
-        },
-        ...prev.filter((item) => !(item.dateStr === dateStr && item.text === answerText)),
-      ]);
+      const localAnsId = `local-${Date.now()}`;
+      setPublicAdventAnswers((prev) => {
+        const next = [
+          {
+            id: localAnsId,
+            dateStr,
+            text: answerText,
+            createdAt: Date.now(),
+          },
+          ...prev.filter((item) => !(item.dateStr === dateStr && item.text === answerText)),
+        ];
+        saveCachedPublicAdventAnswers(next);
+        return next;
+      });
 
       if (user) {
-        addPublicAdventAnswer(user.uid, dateStr, answerText).catch((err) =>
-          console.error('Save advent answer error:', err)
-        );
+        addPublicAdventAnswer(user.uid, dateStr, answerText)
+          .then((cloudId) => {
+            if (cloudId) {
+              setPublicAdventAnswers((prev) => {
+                const next = prev.map((item) =>
+                  item.id === localAnsId ? { ...item, id: cloudId } : item
+                );
+                saveCachedPublicAdventAnswers(next);
+                return next;
+              });
+            }
+          })
+          .catch((err) => console.error('Save advent answer error:', err));
       }
     }
 
@@ -4357,6 +4457,8 @@ export function App() {
           onSaveAdminQuestion={handleSaveAdminQuestion}
           onResetAdminQuestion={handleResetAdminQuestion}
           onDeletePublicAdventAnswer={handleDeletePublicAdventAnswer}
+          onRefreshPeers={handleRefreshAdventPeers}
+          isRefreshingPeers={isRefreshingAdventPeers}
           onClose={() => setActiveModal('none')}
         />
       )}
@@ -4376,6 +4478,8 @@ export function App() {
           onDeleteMemo={handleDeleteMemo}
           onToggleMemoLike={handleToggleMemoLike}
           isAdminMode={isAdminMode}
+          onRefreshMemos={handleRefreshFlowerMemos}
+          isRefreshing={isRefreshingMemos}
           onMoveToMemo={(memo) => {
             if (viewMode === 'arena') switchViewMode('plaza');
             isTrackRunningRef.current = false;

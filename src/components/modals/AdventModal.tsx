@@ -8,6 +8,7 @@ import {
   Lock,
   MessageSquare,
   Pencil,
+  RefreshCw,
   RotateCcw,
   Trash2,
   Users,
@@ -50,6 +51,8 @@ export function AdventModal({
   onSaveAdminQuestion,
   onResetAdminQuestion,
   onDeletePublicAdventAnswer,
+  onRefreshPeers,
+  isRefreshingPeers = false,
   onClose,
 }: {
   todayKstStr: string;
@@ -78,6 +81,8 @@ export function AdventModal({
   onSaveAdminQuestion?: (dateStr: string, newQuestion: string) => void;
   onResetAdminQuestion?: (dateStr: string) => void;
   onDeletePublicAdventAnswer?: (id: string) => void;
+  onRefreshPeers?: () => void;
+  isRefreshingPeers?: boolean;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
@@ -648,7 +653,18 @@ export function AdventModal({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs font-bold text-sky-200">{t.adventPeerRecords}</div>
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  {onRefreshPeers && (
+                    <button
+                      type="button"
+                      onClick={onRefreshPeers}
+                      disabled={isRefreshingPeers}
+                      title="새로고침"
+                      className="p-1.5 rounded-xl bg-slate-950/70 hover:bg-slate-800 border border-white/10 text-sky-300 disabled:opacity-50 transition"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPeers ? 'animate-spin' : ''}`} />
+                    </button>
+                  )}
                   <button
                     onClick={() => setPeerFilterMode('all')}
                     className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition whitespace-nowrap ${

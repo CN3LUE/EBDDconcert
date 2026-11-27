@@ -15,15 +15,19 @@ import {
   doc,
   getDoc,
   getDocFromServer,
+  getDocs,
   getFirestore,
   increment,
-  onSnapshot,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
   writeBatch,
+  type Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { ARENA_SECTIONS } from '../constants/arenaSections';
@@ -57,14 +61,65 @@ export interface FirestoreErrorInfo {
 }
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+function createFirestoreInstance(): Firestore {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+export const db = createFirestoreInstance();
 export const auth = getAuth(app);
+
+const QUOTA_COOLDOWN_KEY = 'kspo_plaza_firestore_quota_until_v1';
+const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
+
+export function isQuotaExceededError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code || '';
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    code === 'resource-exhausted' ||
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('resource-exhausted')
+  );
+}
+
+export function isInQuotaCooldown(): boolean {
+  try {
+    const raw = window.localStorage.getItem(QUOTA_COOLDOWN_KEY);
+    if (!raw) return false;
+    const until = Number(raw);
+    return Number.isFinite(until) && Date.now() < until;
+  } catch {
+    return false;
+  }
+}
+
+export function markQuotaCooldown(): void {
+  try {
+    window.localStorage.setItem(QUOTA_COOLDOWN_KEY, String(Date.now() + QUOTA_COOLDOWN_MS));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null
 ): never {
+  if (isQuotaExceededError(error)) {
+    markQuotaCooldown();
+  }
   const currentUser = auth.currentUser;
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -88,9 +143,20 @@ export function handleFirestoreError(
 }
 
 async function testConnection() {
+  if (isInQuotaCooldown()) return;
+  try {
+    if (window.sessionStorage.getItem('kspo_plaza_conn_checked_v1') === '1') return;
+    window.sessionStorage.setItem('kspo_plaza_conn_checked_v1', '1');
+  } catch {
+    // ignore sessionStorage errors
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
+    if (isQuotaExceededError(error)) {
+      markQuotaCooldown();
+      return;
+    }
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error('Please check your Firebase configuration.');
     }
@@ -231,16 +297,70 @@ export function loadCachedFlowerMemos(): PlazaMemo[] | null {
   }
 }
 
-export function saveCachedFlowerMemos(memos: PlazaMemo[]): void {
+export function saveCachedFlowerMemos(memos: PlazaMemo[], markSynced = false): void {
   try {
     const clean = memos.filter((m) => !m.id.startsWith('flower-init-')).slice(0, 300);
     window.localStorage.setItem(FLOWER_MEMOS_CACHE_KEY, JSON.stringify(clean));
+    if (markSynced) {
+      window.localStorage.setItem(FLOWER_MEMOS_META_KEY, String(Date.now()));
+    }
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+const FLOWER_MEMOS_META_KEY = 'kspo_plaza_flower_memos_ts_v1';
+const FLOWER_MEMOS_TTL_MS = 5 * 60 * 1000;
+
+const ADVENT_ANSWERS_CACHE_KEY = 'kspo_plaza_advent_answers_v1';
+const ADVENT_ANSWERS_META_KEY = 'kspo_plaza_advent_answers_ts_v1';
+const ADVENT_ANSWERS_TTL_MS = 10 * 60 * 1000;
+
+export function loadCachedPublicAdventAnswers(): PublicAdventAnswer[] {
+  try {
+    const raw = window.localStorage.getItem(ADVENT_ANSWERS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is PublicAdventAnswer =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        typeof (item as PublicAdventAnswer).id === 'string' &&
+        typeof (item as PublicAdventAnswer).dateStr === 'string' &&
+        typeof (item as PublicAdventAnswer).text === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveCachedPublicAdventAnswers(items: PublicAdventAnswer[], markSynced = false): void {
+  try {
+    window.localStorage.setItem(ADVENT_ANSWERS_CACHE_KEY, JSON.stringify(items.slice(0, 400)));
+    if (markSynced) {
+      window.localStorage.setItem(ADVENT_ANSWERS_META_KEY, String(Date.now()));
+    }
   } catch {
     // ignore storage quota errors
   }
 }
 
 const ADVENT_QUESTIONS_CACHE_KEY = 'kspo_plaza_advent_questions_v1';
+const ADVENT_QUESTIONS_META_KEY = 'kspo_plaza_advent_questions_ts_v1';
+const ADVENT_QUESTIONS_TTL_MS = 30 * 60 * 1000;
+
+const USER_SYNC_META_KEY = 'kspo_plaza_user_sync_meta_v1';
+const USER_SYNC_TTL_MS = 10 * 60 * 1000;
+
+function isCacheFresh(metaKey: string, ttlMs: number): boolean {
+  try {
+    const ts = Number(window.localStorage.getItem(metaKey));
+    return Number.isFinite(ts) && ts > 0 && Date.now() - ts < ttlMs;
+  } catch {
+    return false;
+  }
+}
 
 export function loadCachedAdventQuestionOverrides(): Record<string, string> {
   try {
@@ -260,9 +380,15 @@ export function loadCachedAdventQuestionOverrides(): Record<string, string> {
   }
 }
 
-function saveCachedAdventQuestionOverrides(overrides: Record<string, string>): void {
+export function saveCachedAdventQuestionOverrides(
+  overrides: Record<string, string>,
+  markSynced = false
+): void {
   try {
     window.localStorage.setItem(ADVENT_QUESTIONS_CACHE_KEY, JSON.stringify(overrides));
+    if (markSynced) {
+      window.localStorage.setItem(ADVENT_QUESTIONS_META_KEY, String(Date.now()));
+    }
   } catch {
     // ignore storage quota errors
   }
@@ -344,72 +470,102 @@ export async function signOutFirebase(): Promise<void> {
   await signOut(auth);
 }
 
-export function subscribeUserCloudState(
+export async function fetchUserCloudState(
   userId: string,
   fallbackProfile: UserProfileState,
-  onLoaded: (payload: CloudUserPayload) => void,
-  onSynced: () => void
-): () => void {
+  options?: { force?: boolean }
+): Promise<{ loaded: CloudUserPayload | null; quotaExceeded: boolean }> {
   const path = `users/${userId}`;
-  const userDocRef = doc(db, 'users', userId);
-  return onSnapshot(
-    userDocRef,
-    (snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as Record<string, unknown>;
-        const rawProfile = data.myProfile as (Partial<UserProfileState> & { hairStyle?: string }) | undefined;
-        const normalizedHair =
-          rawProfile?.hairStyle === 'long' ||
-          rawProfile?.hairStyle === 'ponytail' ||
-          rawProfile?.hairStyle === 'short'
-            ? rawProfile.hairStyle
-            : rawProfile?.hairStyle === 'dandy'
-              ? 'short'
-              : fallbackProfile.hairStyle;
-        const loadedProfile: UserProfileState = rawProfile
-          ? {
-              ...fallbackProfile,
-              ...rawProfile,
-              hairStyle: normalizedHair,
-              hasWristband: true,
-            }
-          : fallbackProfile;
-        const loadedChecked = Array.isArray(data.checkedDates) ? (data.checkedDates as string[]) : [];
-        const loadedAnswers =
-          data.adventAnswers && typeof data.adventAnswers === 'object'
-            ? (data.adventAnswers as Record<string, string>)
-            : {};
-        const loadedLikedMemoIds = Array.isArray(data.likedMemoIds)
-          ? (data.likedMemoIds.filter((x): x is string => typeof x === 'string')).slice(0, 300)
-          : [];
-        const loadedJumps = typeof data.ebddJumps === 'number' ? data.ebddJumps : 1;
-        const loadedRunBest = typeof data.runBestScore === 'number' ? data.runBestScore : 0;
-        const loadedRoofBest = typeof data.roofBestScore === 'number' ? data.roofBestScore : 0;
+  const force = Boolean(options?.force);
 
-        onLoaded({
-          myProfile: loadedProfile,
-          checkedDates: loadedChecked,
-          adventAnswers: loadedAnswers,
-          likedMemoIds: loadedLikedMemoIds,
-          ebddJumps: loadedJumps,
-          runBestScore: loadedRunBest,
-          roofBestScore: loadedRoofBest,
-        });
+  if (!force) {
+    try {
+      const rawMeta = window.localStorage.getItem(USER_SYNC_META_KEY);
+      if (rawMeta) {
+        const meta = JSON.parse(rawMeta) as { uid?: string; ts?: number };
+        if (meta.uid === userId && typeof meta.ts === 'number' && Date.now() - meta.ts < USER_SYNC_TTL_MS) {
+          const cached = loadLocalUserState(fallbackProfile);
+          if (cached) return { loaded: null, quotaExceeded: false };
+        }
       }
-      onSynced();
-    },
-    (err) => {
-      onSynced();
-      try {
-        handleFirestoreError(err, OperationType.GET, path);
-      } catch {
-        // already logged structured FirestoreErrorInfo
-      }
+    } catch {
+      // ignore storage parse error
     }
-  );
+  }
+
+  if (isInQuotaCooldown()) {
+    return { loaded: null, quotaExceeded: true };
+  }
+
+  try {
+    const snap = await getDoc(doc(db, 'users', userId));
+    try {
+      window.localStorage.setItem(USER_SYNC_META_KEY, JSON.stringify({ uid: userId, ts: Date.now() }));
+    } catch {
+      // ignore storage error
+    }
+    if (!snap.exists()) {
+      return { loaded: null, quotaExceeded: false };
+    }
+    const data = snap.data() as Record<string, unknown>;
+    const rawProfile = data.myProfile as (Partial<UserProfileState> & { hairStyle?: string }) | undefined;
+    const normalizedHair =
+      rawProfile?.hairStyle === 'long' ||
+      rawProfile?.hairStyle === 'ponytail' ||
+      rawProfile?.hairStyle === 'short'
+        ? rawProfile.hairStyle
+        : rawProfile?.hairStyle === 'dandy'
+          ? 'short'
+          : fallbackProfile.hairStyle;
+    const loadedProfile: UserProfileState = rawProfile
+      ? {
+          ...fallbackProfile,
+          ...rawProfile,
+          hairStyle: normalizedHair,
+          hasWristband: true,
+        }
+      : fallbackProfile;
+    const loadedChecked = Array.isArray(data.checkedDates) ? (data.checkedDates as string[]) : [];
+    const loadedAnswers =
+      data.adventAnswers && typeof data.adventAnswers === 'object'
+        ? (data.adventAnswers as Record<string, string>)
+        : {};
+    const loadedLikedMemoIds = Array.isArray(data.likedMemoIds)
+      ? (data.likedMemoIds.filter((x): x is string => typeof x === 'string')).slice(0, 300)
+      : [];
+    const loadedJumps = typeof data.ebddJumps === 'number' ? data.ebddJumps : 1;
+    const loadedRunBest = typeof data.runBestScore === 'number' ? data.runBestScore : 0;
+    const loadedRoofBest = typeof data.roofBestScore === 'number' ? data.roofBestScore : 0;
+
+    return {
+      loaded: {
+        myProfile: loadedProfile,
+        checkedDates: loadedChecked,
+        adventAnswers: loadedAnswers,
+        likedMemoIds: loadedLikedMemoIds,
+        ebddJumps: loadedJumps,
+        runBestScore: loadedRunBest,
+        roofBestScore: loadedRoofBest,
+      },
+      quotaExceeded: false,
+    };
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      console.warn('Firestore daily read quota reached (users); using local cached state.');
+      return { loaded: null, quotaExceeded: true };
+    }
+    try {
+      handleFirestoreError(err, OperationType.GET, path);
+    } catch {
+      // already logged structured FirestoreErrorInfo
+    }
+    return { loaded: null, quotaExceeded: false };
+  }
 }
 
 export async function saveUserCloudState(userId: string, payload: CloudUserPayload): Promise<void> {
+  if (isInQuotaCooldown()) return;
   const path = `users/${userId}`;
   const userDocRef = doc(db, 'users', userId);
   const sanitizedChecked = Array.from(
@@ -441,169 +597,232 @@ export async function saveUserCloudState(userId: string, payload: CloudUserPaylo
       },
       { merge: true }
     );
+    try {
+      window.localStorage.setItem(USER_SYNC_META_KEY, JSON.stringify({ uid: userId, ts: Date.now() }));
+    } catch {
+      // ignore storage error
+    }
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
-export function subscribePublicAdventAnswers(
-  onUpdate: (items: PublicAdventAnswer[]) => void
-): () => void {
+export async function fetchPublicAdventAnswers(options?: {
+  force?: boolean;
+}): Promise<{ items: PublicAdventAnswer[]; fromCache: boolean; quotaExceeded: boolean }> {
   const path = 'advent_answers';
-  const q = query(collection(db, 'advent_answers'), where('isPublic', '==', true));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const items: PublicAdventAnswer[] = [];
-      snap.forEach((d) => {
-        const v = d.data() as Record<string, unknown>;
-        if (v && typeof v.dateStr === 'string' && typeof v.text === 'string') {
-          const ts = v.createdAt as { toMillis?: () => number } | number | undefined;
-          const millis =
-            typeof ts === 'number' ? ts : ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0;
-          items.push({
-            id: d.id,
-            dateStr: v.dateStr,
-            text: v.text,
-            createdAt: millis,
-          });
-        }
-      });
-      items.sort((a, b) => b.createdAt - a.createdAt);
-      onUpdate(items);
-    },
-    (err) => {
-      try {
-        handleFirestoreError(err, OperationType.LIST, path);
-      } catch {
-        // logged structured error
+  const cached = loadCachedPublicAdventAnswers();
+  const force = Boolean(options?.force);
+
+  if (!force && isCacheFresh(ADVENT_ANSWERS_META_KEY, ADVENT_ANSWERS_TTL_MS)) {
+    return { items: cached, fromCache: true, quotaExceeded: false };
+  }
+
+  if (isInQuotaCooldown()) {
+    return { items: cached, fromCache: true, quotaExceeded: true };
+  }
+
+  try {
+    const q = query(collection(db, 'advent_answers'), where('isPublic', '==', true));
+    const snap = await getDocs(q);
+    const items: PublicAdventAnswer[] = [];
+    snap.forEach((d) => {
+      const v = d.data() as Record<string, unknown>;
+      if (v && typeof v.dateStr === 'string' && typeof v.text === 'string') {
+        const ts = v.createdAt as { toMillis?: () => number } | number | undefined;
+        const millis =
+          typeof ts === 'number' ? ts : ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0;
+        items.push({
+          id: d.id,
+          dateStr: v.dateStr,
+          text: v.text,
+          createdAt: millis,
+        });
       }
+    });
+    items.sort((a, b) => b.createdAt - a.createdAt);
+    saveCachedPublicAdventAnswers(items, true);
+    return { items, fromCache: false, quotaExceeded: false };
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      console.warn('Firestore daily read quota reached (advent_answers); using local cache.');
+      return { items: cached, fromCache: true, quotaExceeded: true };
     }
-  );
+    try {
+      handleFirestoreError(err, OperationType.LIST, path);
+    } catch {
+      // logged structured error
+    }
+    return { items: cached, fromCache: true, quotaExceeded: false };
+  }
 }
 
 export async function addPublicAdventAnswer(
   authorUid: string,
   dateStr: string,
   text: string
-): Promise<void> {
+): Promise<string | null> {
   const path = 'advent_answers';
   const safeText = text.trim().slice(0, 120);
-  if (!safeText || !/^202[67]-\d{2}-\d{2}$/.test(dateStr)) return;
+  if (!safeText || !/^202[67]-\d{2}-\d{2}$/.test(dateStr)) return null;
+  if (isInQuotaCooldown()) return null;
   try {
-    await addDoc(collection(db, 'advent_answers'), {
+    const created = await addDoc(collection(db, 'advent_answers'), {
       authorUid,
       isPublic: true,
       dateStr,
       text: safeText,
       createdAt: serverTimestamp(),
     });
+    return created.id;
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return null;
+    }
     handleFirestoreError(err, OperationType.CREATE, path);
   }
 }
 
 export async function deletePublicAdventAnswer(id: string): Promise<void> {
   if (!id || id.startsWith('local-') || id.startsWith('sample-')) return;
+  if (isInQuotaCooldown()) return;
   const path = `advent_answers/${id}`;
   try {
     await deleteDoc(doc(db, 'advent_answers', id));
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
 
-export function subscribeFlowerMemos(onUpdate: (memos: PlazaMemo[]) => void): () => void {
+export async function fetchFlowerMemos(options?: {
+  force?: boolean;
+}): Promise<{ memos: PlazaMemo[]; fromCache: boolean; quotaExceeded: boolean }> {
   const path = 'flower_memos';
-  const q = query(collection(db, 'flower_memos'), where('isPublic', '==', true));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const cloudMemos: PlazaMemo[] = [];
-      snap.forEach((d) => {
-        const v = d.data() as Record<string, unknown>;
-        if (v && typeof v.text === 'string') {
-          const ts = v.createdAt as
-            | { toMillis?: () => number; seconds?: number }
-            | number
-            | undefined;
-          const createdAtMs =
-            typeof ts === 'number'
-              ? ts
-              : ts && typeof ts.toMillis === 'function'
-              ? ts.toMillis()
-              : ts && typeof ts.seconds === 'number'
-              ? ts.seconds * 1000
-              : d.metadata.hasPendingWrites
-              ? Date.now()
-              : undefined;
-          const fallbackLabel =
-            typeof v.createdAtLabel === 'string' ? v.createdAtLabel : '방금 전';
+  const cached = loadCachedFlowerMemos() ?? [];
+  const force = Boolean(options?.force);
 
-          cloudMemos.push({
-            id: d.id,
-            authorId: typeof v.authorId === 'string' ? v.authorId : undefined,
-            author: typeof v.author === 'string' ? v.author : '보이스팬',
-            seatZone: typeof v.seatZone === 'string' ? v.seatZone : ARENA_SECTIONS[0].label,
-            text: v.text,
-            color: typeof v.color === 'string' ? v.color : FLOWER_COLORS[6].hex,
-            x: typeof v.x === 'number' ? v.x : 0,
-            z: typeof v.z === 'number' ? v.z : 12,
-            likes: typeof v.likes === 'number' ? v.likes : 1,
-            likedByMe: false,
-            createdAt: formatRelativeMemoTime(createdAtMs, fallbackLabel),
-            createdAtMs,
-          });
-        }
-      });
-      cloudMemos.sort(
-        (a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || b.id.localeCompare(a.id)
-      );
-      saveCachedFlowerMemos(cloudMemos);
-      onUpdate(cloudMemos);
-    },
-    (err) => {
-      try {
-        handleFirestoreError(err, OperationType.LIST, path);
-      } catch {
-        // logged structured error
+  if (!force && isCacheFresh(FLOWER_MEMOS_META_KEY, FLOWER_MEMOS_TTL_MS)) {
+    return { memos: cached, fromCache: true, quotaExceeded: false };
+  }
+
+  if (isInQuotaCooldown()) {
+    return { memos: cached, fromCache: true, quotaExceeded: true };
+  }
+
+  try {
+    const q = query(collection(db, 'flower_memos'), where('isPublic', '==', true));
+    const snap = await getDocs(q);
+    const cloudMemos: PlazaMemo[] = [];
+    snap.forEach((d) => {
+      const v = d.data() as Record<string, unknown>;
+      if (v && typeof v.text === 'string') {
+        const ts = v.createdAt as
+          | { toMillis?: () => number; seconds?: number }
+          | number
+          | undefined;
+        const createdAtMs =
+          typeof ts === 'number'
+            ? ts
+            : ts && typeof ts.toMillis === 'function'
+            ? ts.toMillis()
+            : ts && typeof ts.seconds === 'number'
+            ? ts.seconds * 1000
+            : undefined;
+        const fallbackLabel =
+          typeof v.createdAtLabel === 'string' ? v.createdAtLabel : '방금 전';
+
+        cloudMemos.push({
+          id: d.id,
+          authorId: typeof v.authorId === 'string' ? v.authorId : undefined,
+          author: typeof v.author === 'string' ? v.author : '보이스팬',
+          seatZone: typeof v.seatZone === 'string' ? v.seatZone : ARENA_SECTIONS[0].label,
+          text: v.text,
+          color: typeof v.color === 'string' ? v.color : FLOWER_COLORS[6].hex,
+          x: typeof v.x === 'number' ? v.x : 0,
+          z: typeof v.z === 'number' ? v.z : 12,
+          likes: typeof v.likes === 'number' ? v.likes : 1,
+          likedByMe: false,
+          createdAt: formatRelativeMemoTime(createdAtMs, fallbackLabel),
+          createdAtMs,
+        });
       }
+    });
+    cloudMemos.sort(
+      (a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0) || b.id.localeCompare(a.id)
+    );
+    saveCachedFlowerMemos(cloudMemos, true);
+    return { memos: cloudMemos, fromCache: false, quotaExceeded: false };
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      console.warn('Firestore daily read quota reached (flower_memos); using local cache.');
+      return { memos: cached, fromCache: true, quotaExceeded: true };
     }
-  );
+    try {
+      handleFirestoreError(err, OperationType.LIST, path);
+    } catch {
+      // logged structured error
+    }
+    return { memos: cached, fromCache: true, quotaExceeded: false };
+  }
 }
 
-export function subscribeAdventQuestionOverrides(
-  onUpdate: (overrides: Record<string, string>) => void
-): () => void {
+export async function fetchAdventQuestionOverrides(options?: {
+  force?: boolean;
+}): Promise<{ overrides: Record<string, string>; fromCache: boolean; quotaExceeded: boolean }> {
   const path = 'advent_questions';
-  const q = query(collection(db, 'advent_questions'), where('isPublic', '==', true));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const next: Record<string, string> = {};
-      snap.forEach((d) => {
-        const v = d.data() as Record<string, unknown>;
-        if (
-          v &&
-          typeof v.dateStr === 'string' &&
-          /^202[67]-\d{2}-\d{2}$/.test(v.dateStr) &&
-          typeof v.question === 'string' &&
-          v.question.trim()
-        ) {
-          next[v.dateStr] = v.question.trim();
-        }
-      });
-      saveCachedAdventQuestionOverrides(next);
-      onUpdate(next);
-    },
-    (err) => {
-      try {
-        handleFirestoreError(err, OperationType.LIST, path);
-      } catch {
-        // logged structured error
+  const cached = loadCachedAdventQuestionOverrides();
+  const force = Boolean(options?.force);
+
+  if (!force && isCacheFresh(ADVENT_QUESTIONS_META_KEY, ADVENT_QUESTIONS_TTL_MS)) {
+    return { overrides: cached, fromCache: true, quotaExceeded: false };
+  }
+
+  if (isInQuotaCooldown()) {
+    return { overrides: cached, fromCache: true, quotaExceeded: true };
+  }
+
+  try {
+    const q = query(collection(db, 'advent_questions'), where('isPublic', '==', true));
+    const snap = await getDocs(q);
+    const next: Record<string, string> = {};
+    snap.forEach((d) => {
+      const v = d.data() as Record<string, unknown>;
+      if (
+        v &&
+        typeof v.dateStr === 'string' &&
+        /^202[67]-\d{2}-\d{2}$/.test(v.dateStr) &&
+        typeof v.question === 'string' &&
+        v.question.trim()
+      ) {
+        next[v.dateStr] = v.question.trim();
       }
+    });
+    saveCachedAdventQuestionOverrides(next, true);
+    return { overrides: next, fromCache: false, quotaExceeded: false };
+  } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      console.warn('Firestore daily read quota reached (advent_questions); using local cache.');
+      return { overrides: cached, fromCache: true, quotaExceeded: true };
     }
-  );
+    try {
+      handleFirestoreError(err, OperationType.LIST, path);
+    } catch {
+      // logged structured error
+    }
+    return { overrides: cached, fromCache: true, quotaExceeded: false };
+  }
 }
 
 export async function saveAdminAdventQuestion(
@@ -624,6 +843,10 @@ export async function saveAdminAdventQuestion(
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
@@ -634,6 +857,10 @@ export async function deleteAdminAdventQuestion(dateStr: string): Promise<void> 
   try {
     await deleteDoc(doc(db, 'advent_questions', dateStr));
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
@@ -651,6 +878,7 @@ export async function addPublicFlowerMemo(memo: {
   const path = 'flower_memos';
   const safeText = memo.text.trim().slice(0, 60);
   if (!safeText) return null;
+  if (isInQuotaCooldown()) return null;
   try {
     const created = await addDoc(collection(db, 'flower_memos'), {
       authorUid: memo.authorUid,
@@ -669,6 +897,10 @@ export async function addPublicFlowerMemo(memo: {
     });
     return created.id;
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return null;
+    }
     handleFirestoreError(err, OperationType.CREATE, path);
   }
 }
@@ -680,6 +912,7 @@ export async function updatePublicFlowerMemo(
   const path = `flower_memos/${id}`;
   const safeText = updates.text.trim().slice(0, 60);
   if (!safeText) return;
+  if (isInQuotaCooldown()) return;
   try {
     await updateDoc(doc(db, 'flower_memos', id), {
       text: safeText,
@@ -687,6 +920,10 @@ export async function updatePublicFlowerMemo(
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
 }
@@ -695,6 +932,7 @@ export async function waterPublicFlowerMemo(
   memoId: string,
   userId: string
 ): Promise<'liked' | 'already_liked'> {
+  if (isInQuotaCooldown()) return 'liked';
   const path = `flower_memos/${memoId}/likes/${userId}`;
   const likeDocRef = doc(db, 'flower_memos', memoId, 'likes', userId);
   try {
@@ -719,15 +957,24 @@ export async function waterPublicFlowerMemo(
     if (code === 'permission-denied') {
       return 'already_liked';
     }
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return 'liked';
+    }
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
 }
 
 export async function deletePublicFlowerMemo(id: string): Promise<void> {
+  if (isInQuotaCooldown()) return;
   const path = `flower_memos/${id}`;
   try {
     await deleteDoc(doc(db, 'flower_memos', id));
   } catch (err) {
+    if (isQuotaExceededError(err)) {
+      markQuotaCooldown();
+      return;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }

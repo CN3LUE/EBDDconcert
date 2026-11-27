@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Heart, Pencil, Trash2, X } from 'lucide-react';
+import { Check, Heart, Pencil, RefreshCw, Trash2, X } from 'lucide-react';
 import { FLOWER_COLORS } from '../../constants/plazaData';
 import { useI18n } from '../../i18n/LanguageContext';
 import { formatRelativeMemoTime } from '../../services/db';
@@ -20,6 +20,8 @@ export function FlowerMemosModal({
   onToggleMemoLike,
   onMoveToMemo,
   isAdminMode = false,
+  onRefreshMemos,
+  isRefreshing = false,
   onClose,
 }: {
   memos: PlazaMemo[];
@@ -35,6 +37,8 @@ export function FlowerMemosModal({
   onToggleMemoLike: (id: string) => void;
   onMoveToMemo: (memo: PlazaMemo) => void;
   isAdminMode?: boolean;
+  onRefreshMemos?: () => void;
+  isRefreshing?: boolean;
   onClose: () => void;
 }) {
   const { lang, t } = useI18n();
@@ -82,12 +86,25 @@ export function FlowerMemosModal({
               {t.flowerModalSubtitle}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onRefreshMemos && (
+              <button
+                type="button"
+                onClick={onRefreshMemos}
+                disabled={isRefreshing}
+                title="새로고침"
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-sky-300 disabled:opacity-50 transition"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <form
